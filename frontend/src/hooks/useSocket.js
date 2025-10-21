@@ -87,6 +87,15 @@ export const useSocket = () => {
       console.log('Socket disconnected');
     });
 
+    // Forced logout from server (session taken over elsewhere)
+    socketService.on('force_logout', (payload) => {
+      console.warn('Force logout received:', payload);
+      // Dispatch logout action directly (assuming auth slice has logoutUser action type)
+      dispatch({ type: 'auth/logoutUser' });
+      // Disconnect the socket to prevent further events
+      socketService.disconnect();
+    });
+
   // Intentionally excluding currentRoom from deps; we use ref to avoid stale closure without re-registering listeners per room change
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dispatch, userId]);

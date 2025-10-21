@@ -1,4 +1,5 @@
 const { v4: uuidv4 } = require('uuid');
+const { signUser } = require('../utils/jwt');
 
 class UserController {
   constructor(dataService) {
@@ -44,9 +45,11 @@ class UserController {
 
       this.dataService.addUser(user);
       
+      const token = signUser(user);
       return { 
         success: true, 
         userId,
+        token,
         user: { id: userId, name: name.trim(), phoneNumber, isOnline: false, lastSeen: user.lastSeen }
       };
     } catch (error) {
@@ -74,14 +77,53 @@ class UserController {
       if (!user) {
         return { success: false, error: 'User not found' };
       }
+      // If already online with a socket, treat as duplicate session
+      if (user.isOnline && user.socketId) {
+        return { success: false, conflict: true, message: 'User already logged in elsewhere' };
+      }
 
+      const token = signUser(user);
       return { 
         success: true, 
         userId: user.id,
+        token,
         user: { id: user.id, name: user.name, phoneNumber: user.phoneNumber, isOnline: user.isOnline, lastSeen: user.lastSeen }
       };
     } catch (error) {
       console.error('Login error:', error);
+      return { success: false, error: 'Internal server error' };
+    }
+  };
+
+  // Force login - terminate previous session if exists and issue new token
+  forceLogin = (loginData) => {
+    try {
+      const { phoneNumber } = loginData;
+      if (!phoneNumber) return { success: false, error: 'Phone number is required' };
+      const user = this.dataService.findUserByPhone(phoneNumber);
+      if (!user) return { success: false, error: 'User not found' };
+
+      // If there is an existing session, disconnect previous socket if we have io reference
+      if (user.isOnline && user.socketId && this.io) {
+        this.io.to(user.socketId).emit('force_logout', { reason: 'Session taken over' });
+        // Clear previous socketId so new connection can attach
+        user.socketId = null;
+      }
+
+      // Update lastSeen (do not mark online here; socket connection will set online to avoid race)
+      user.lastSeen = new Date();
+      this.dataService.updateUser(user.id, { lastSeen: user.lastSeen });
+
+      const token = signUser(user);
+      return {
+        success: true,
+        userId: user.id,
+        token,
+        forced: true,
+        user: { id: user.id, name: user.name, phoneNumber: user.phoneNumber, isOnline: user.isOnline, lastSeen: user.lastSeen }
+      };
+    } catch (e) {
+      console.error('Force login error:', e);
       return { success: false, error: 'Internal server error' };
     }
   };

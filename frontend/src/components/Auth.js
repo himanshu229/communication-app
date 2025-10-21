@@ -1,11 +1,22 @@
 import React, { useState } from 'react';
 import { User, Phone, MessageCircle, Shield } from 'lucide-react';
 import { useAppDispatch, useAuth } from '../hooks/redux';
-import { registerUser, loginUser, clearError } from '../store/slices/authSlice';
+import { registerUser, loginUser, clearError, forceLoginUser, clearLoginConflict } from '../store/slices/authSlice';
 
 const Auth = () => {
   const dispatch = useAppDispatch();
-  const { error, isRegistering, isLoggingIn } = useAuth();
+  const { error, isRegistering, isLoggingIn, loginConflict } = useAuth();
+  const handleForceLogin = async () => {
+    try {
+      await dispatch(forceLoginUser({ phoneNumber: formData.phoneNumber })).unwrap();
+    } catch (err) {
+      console.error('Force login error:', err);
+    }
+  };
+
+  const cancelForceLogin = () => {
+    dispatch(clearLoginConflict());
+  };
   
   const [isLogin, setIsLogin] = useState(true);
   const [formData, setFormData] = useState({
@@ -174,6 +185,29 @@ const Auth = () => {
           {displayError && (
             <div className="bg-red-50 text-red-700 py-3 px-4 rounded-lg text-sm border-l-4 border-red-700">
               {displayError}
+            </div>
+          )}
+
+          {loginConflict && (
+            <div className="bg-yellow-50 text-yellow-800 py-4 px-5 rounded-lg text-sm border-l-4 border-yellow-500 flex flex-col gap-3">
+              <div className="font-semibold">Session Conflict Detected</div>
+              <div>You're already logged in from another device/session. Do you want to force this login and logout the previous session?</div>
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={handleForceLogin}
+                  className="flex-1 py-2 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-md text-sm font-semibold hover:shadow-md"
+                >
+                  Force Login
+                </button>
+                <button
+                  type="button"
+                  onClick={cancelForceLogin}
+                  className="flex-1 py-2 bg-gray-200 text-gray-700 rounded-md text-sm font-semibold hover:bg-gray-300"
+                >
+                  Cancel
+                </button>
+              </div>
             </div>
           )}
 

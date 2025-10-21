@@ -10,6 +10,7 @@ const ChatController = require('./controllers/chatController');
 const SocketController = require('./controllers/socketController');
 const UserRoutes = require('./routes/userRoutes');
 const ChatRoutes = require('./routes/chatRoutes');
+const auth = require('./middleware/auth');
 
 const app = express();
 const server = http.createServer(app);
@@ -41,11 +42,13 @@ const userRoutes = new UserRoutes(userController);
 const chatRoutes = new ChatRoutes(chatController);
 
 // Use routes
+// Public auth endpoints remain accessible inside userRoutes (register/login)
 app.use('/api', userRoutes.getRouter());
-app.use('/api', chatRoutes.getRouter());
+// Protect chat routes & extra endpoints
+app.use('/api', auth, chatRoutes.getRouter());
 
 // Additional API endpoints that need special handling
-app.get('/api/messages/:roomId', (req, res) => {
+app.get('/api/messages/:roomId', auth, (req, res) => {
   try {
     const messages = chatController.getRoomMessages(req.params.roomId);
     res.json(messages);
@@ -54,7 +57,7 @@ app.get('/api/messages/:roomId', (req, res) => {
   }
 });
 
-app.get('/api/room/:userId1/:userId2', (req, res) => {
+app.get('/api/room/:userId1/:userId2', auth, (req, res) => {
   try {
     const { userId1, userId2 } = req.params;
     const room = chatController.getRoomBetweenUsers(userId1, userId2);
@@ -79,7 +82,7 @@ app.get('/api/room/:userId1/:userId2', (req, res) => {
 });
 
 // Data reload endpoint - useful after manual JSON file edits
-app.post('/api/admin/reload', (req, res) => {
+app.post('/api/admin/reload', auth, (req, res) => {
   try {
     dataService.reloadAllData();
     res.json({ 

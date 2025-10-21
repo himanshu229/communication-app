@@ -8,12 +8,17 @@ export const registerUser = createAsyncThunk(
     try {
       const response = await apiService.registerUser(userData);
       if (response.success) {
+        if (response.conflict) {
+          return rejectWithValue('CONFLICT');
+        }
         const user = response.user;
         const userId = response.userId;
+        const token = response.token;
         
         // Store user data in localStorage
-        localStorage.setItem('userId', userId);
-        localStorage.setItem('user', JSON.stringify(user));
+  localStorage.setItem('userId', userId);
+  localStorage.setItem('user', JSON.stringify(user));
+  if (token) localStorage.setItem('authToken', token);
         
         return user;
       } else {
@@ -34,14 +39,19 @@ export const loginUser = createAsyncThunk(
       console.log('Login response:', response);
       
       if (response.success) {
+        if (response.conflict) {
+          return rejectWithValue('CONFLICT');
+        }
         const user = response.user;
         const userId = response.userId;
+        const token = response.token;
         
         console.log('Login successful - User:', user, 'UserId:', userId);
         
         // Store user data in localStorage
-        localStorage.setItem('userId', userId);
-        localStorage.setItem('user', JSON.stringify(user));
+  localStorage.setItem('userId', userId);
+  localStorage.setItem('user', JSON.stringify(user));
+  if (token) localStorage.setItem('authToken', token);
         
         return user;
       } else {
@@ -82,7 +92,31 @@ export const logoutUser = createAsyncThunk(
     try {
       localStorage.removeItem('userId');
       localStorage.removeItem('user');
+      localStorage.removeItem('authToken');
       return null;
+    } catch (error) {
+      return rejectWithValue(error.message);
+    }
+  }
+);
+
+// Force login (override existing session)
+export const forceLoginUser = createAsyncThunk(
+  'auth/forceLoginUser',
+  async (credentials, { rejectWithValue }) => {
+    try {
+      const response = await apiService.forceLogin(credentials);
+      if (response.success) {
+        const user = response.user;
+        const userId = response.user?.id || response.userId;
+        const token = response.token;
+        if (userId) localStorage.setItem('userId', userId);
+        if (user) localStorage.setItem('user', JSON.stringify(user));
+        if (token) localStorage.setItem('authToken', token);
+        return user;
+      } else {
+        return rejectWithValue(response.error || 'Force login failed');
+      }
     } catch (error) {
       return rejectWithValue(error.message);
     }
@@ -96,6 +130,7 @@ const initialState = {
   error: null,
   isRegistering: false,
   isLoggingIn: false,
+  loginConflict: false,
 };
 
 const authSlice = createSlice({
@@ -115,6 +150,9 @@ const authSlice = createSlice({
         if (lastSeen) state.user.lastSeen = lastSeen;
       }
     },
+    clearLoginConflict: (state) => {
+      state.loginConflict = false;
+    }
   },
   extraReducers: (builder) => {
     builder
@@ -150,7 +188,12 @@ const authSlice = createSlice({
       })
       .addCase(loginUser.rejected, (state, action) => {
         state.isLoggingIn = false;
-        state.error = action.payload;
+        if (action.payload === 'CONFLICT') {
+          state.loginConflict = true;
+          state.error = null;
+        } else {
+          state.error = action.payload;
+        }
         state.loading = false;
       })
       
@@ -177,8 +220,28 @@ const authSlice = createSlice({
         state.isAuthenticated = false;
         state.error = null;
       });
+
+    // Force login user
+    builder
+      .addCase(forceLoginUser.pending, (state) => {
+        state.isLoggingIn = true;
+        state.error = null;
+      })
+      .addCase(forceLoginUser.fulfilled, (state, action) => {
+        state.isLoggingIn = false;
+        state.user = action.payload;
+        state.isAuthenticated = true;
+        state.loading = false;
+        state.error = null;
+        state.loginConflict = false;
+      })
+      .addCase(forceLoginUser.rejected, (state, action) => {
+        state.isLoggingIn = false;
+        state.error = action.payload;
+        state.loading = false;
+      });
   },
 });
 
-export const { clearError, setLoading, updateAuthUserStatus } = authSlice.actions;
+export const { clearError, setLoading, updateAuthUserStatus, clearLoginConflict } = authSlice.actions;
 export default authSlice.reducer;

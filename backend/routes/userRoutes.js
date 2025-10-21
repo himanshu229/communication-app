@@ -28,6 +28,16 @@ class UserRoutes {
       }
     });
 
+    // Force login route (override existing session)
+    this.router.post('/users/force-login', (req, res) => {
+      try {
+        const result = this.userController.forceLogin(req.body);
+        res.status(result.success ? 200 : 401).json(result);
+      } catch (error) {
+        res.status(500).json({ success: false, message: 'Server error' });
+      }
+    });
+
     // Get all users route
     this.router.get('/users', (req, res) => {
       try {

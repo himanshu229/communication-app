@@ -6,9 +6,12 @@ class ApiService {
   async request(endpoint, options = {}) {
     const url = `${API_BASE_URL}${endpoint}`;
     
+    // Attach JWT if present
+    const token = localStorage.getItem('authToken');
     const config = {
       headers: {
         'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...options.headers,
       },
       ...options,
@@ -42,6 +45,13 @@ class ApiService {
 
   async loginUser(credentials) {
     return this.request('/users/login', {
+      method: 'POST',
+      body: JSON.stringify(credentials),
+    });
+  }
+
+  async forceLogin(credentials) {
+    return this.request('/users/force-login', {
       method: 'POST',
       body: JSON.stringify(credentials),
     });
