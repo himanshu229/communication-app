@@ -5,15 +5,12 @@ class ApiService {
   // Generic fetch method with error handling
   async request(endpoint, options = {}) {
     const url = `${API_BASE_URL}${endpoint}`;
-    
-    // Attach JWT if present
-    const token = localStorage.getItem('authToken');
     const config = {
       headers: {
         'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...options.headers,
       },
+      credentials: 'include', // send cookies
       ...options,
     };
 
@@ -55,6 +52,14 @@ class ApiService {
       method: 'POST',
       body: JSON.stringify(credentials),
     });
+  }
+
+  async fetchCurrentUser() {
+    return this.request('/users/me');
+  }
+
+  async logout() {
+    return this.request('/users/logout', { method: 'POST' });
   }
 
   // User related API calls

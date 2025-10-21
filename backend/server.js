@@ -1,4 +1,5 @@
 const express = require('express');
+const cookieParser = require('cookie-parser');
 const http = require('http');
 const socketIo = require('socket.io');
 const cors = require('cors');
@@ -16,17 +17,21 @@ const app = express();
 const server = http.createServer(app);
 const io = socketIo(server, {
   cors: {
-    origin: "*",
-    methods: ["GET", "POST"]
+    origin: true, // reflect request origin
+    methods: ["GET", "POST"],
+    credentials: true
   }
 });
 
 // Middleware
 app.use(cors({
-   origin: "*",
-  credentials: true
+  origin: (origin, callback) => callback(null, true), // allow all origins
+  credentials: true,
+  methods: ['GET','POST','PUT','DELETE','OPTIONS'],
+  allowedHeaders: ['Content-Type','Authorization']
 }));
 app.use(express.json());
+app.use(cookieParser());
 
 // Initialize services and controllers
 const dataService = new DataService();

@@ -11,19 +11,9 @@ export const registerUser = createAsyncThunk(
         if (response.conflict) {
           return rejectWithValue('CONFLICT');
         }
-        const user = response.user;
-        const userId = response.userId;
-        const token = response.token;
-        
-        // Store user data in localStorage
-  localStorage.setItem('userId', userId);
-  localStorage.setItem('user', JSON.stringify(user));
-  if (token) localStorage.setItem('authToken', token);
-        
-        return user;
-      } else {
-        return rejectWithValue(response.error);
+        return response.user;
       }
+      return rejectWithValue(response.error || response.message);
     } catch (error) {
       return rejectWithValue(error.message);
     }
@@ -34,54 +24,29 @@ export const loginUser = createAsyncThunk(
   'auth/loginUser',
   async (credentials, { rejectWithValue }) => {
     try {
-      console.log('Login attempt with credentials:', credentials);
       const response = await apiService.loginUser(credentials);
-      console.log('Login response:', response);
-      
       if (response.success) {
-        if (response.conflict) {
-          return rejectWithValue('CONFLICT');
-        }
-        const user = response.user;
-        const userId = response.userId;
-        const token = response.token;
-        
-        console.log('Login successful - User:', user, 'UserId:', userId);
-        
-        // Store user data in localStorage
-  localStorage.setItem('userId', userId);
-  localStorage.setItem('user', JSON.stringify(user));
-  if (token) localStorage.setItem('authToken', token);
-        
-        return user;
-      } else {
-        console.log('Login failed:', response.error);
-        return rejectWithValue(response.error);
+        if (response.conflict) return rejectWithValue('CONFLICT');
+        return response.user;
       }
+      return rejectWithValue(response.error || response.message);
     } catch (error) {
-      console.error('Login error:', error);
       return rejectWithValue(error.message);
     }
   }
 );
 
-export const loadUserFromStorage = createAsyncThunk(
-  'auth/loadUserFromStorage',
+export const fetchCurrentUser = createAsyncThunk(
+  'auth/fetchCurrentUser',
   async (_, { rejectWithValue }) => {
     try {
-      const savedUserId = localStorage.getItem('userId');
-      const savedUser = localStorage.getItem('user');
-      
-      if (savedUserId && savedUser) {
-        const userData = JSON.parse(savedUser);
-        return userData;
-      } else {
-        return rejectWithValue('No saved user found');
+      const response = await apiService.fetchCurrentUser();
+      if (response.success) {
+        return response.user;
       }
+      return rejectWithValue(response.error || response.message || 'Unable to fetch user');
     } catch (error) {
-      localStorage.removeItem('userId');
-      localStorage.removeItem('user');
-      return rejectWithValue('Invalid saved user data');
+      return rejectWithValue(error.message);
     }
   }
 );
@@ -90,9 +55,7 @@ export const logoutUser = createAsyncThunk(
   'auth/logoutUser',
   async (_, { rejectWithValue }) => {
     try {
-      localStorage.removeItem('userId');
-      localStorage.removeItem('user');
-      localStorage.removeItem('authToken');
+      await apiService.logout();
       return null;
     } catch (error) {
       return rejectWithValue(error.message);
@@ -107,16 +70,9 @@ export const forceLoginUser = createAsyncThunk(
     try {
       const response = await apiService.forceLogin(credentials);
       if (response.success) {
-        const user = response.user;
-        const userId = response.user?.id || response.userId;
-        const token = response.token;
-        if (userId) localStorage.setItem('userId', userId);
-        if (user) localStorage.setItem('user', JSON.stringify(user));
-        if (token) localStorage.setItem('authToken', token);
-        return user;
-      } else {
-        return rejectWithValue(response.error || 'Force login failed');
+        return response.user;
       }
+      return rejectWithValue(response.error || response.message || 'Force login failed');
     } catch (error) {
       return rejectWithValue(error.message);
     }
@@ -131,6 +87,7 @@ const initialState = {
   isRegistering: false,
   isLoggingIn: false,
   loginConflict: false,
+  initialized: false,
 };
 
 const authSlice = createSlice({
@@ -198,20 +155,23 @@ const authSlice = createSlice({
       })
       
       // Load user from storage
-      .addCase(loadUserFromStorage.pending, (state) => {
+      // Fetch current user via cookie
+      .addCase(fetchCurrentUser.pending, (state) => {
         state.loading = true;
       })
-      .addCase(loadUserFromStorage.fulfilled, (state, action) => {
+      .addCase(fetchCurrentUser.fulfilled, (state, action) => {
         state.user = action.payload;
         state.isAuthenticated = true;
         state.loading = false;
         state.error = null;
+        state.initialized = true;
       })
-      .addCase(loadUserFromStorage.rejected, (state) => {
+      .addCase(fetchCurrentUser.rejected, (state) => {
         state.user = null;
         state.isAuthenticated = false;
         state.loading = false;
         state.error = null;
+        state.initialized = true;
       })
       
       // Logout user

@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { useAppDispatch, useAuth } from './hooks/redux';
-import { loadUserFromStorage, logoutUser } from './store/slices/authSlice';
+import { fetchCurrentUser, logoutUser } from './store/slices/authSlice';
 import { socketService } from './services/socket';
 import Auth from './components/Auth';
 import Chat from './components/Chat';
@@ -10,8 +10,8 @@ function App() {
   const { user, isAuthenticated, loading } = useAuth();
 
   useEffect(() => {
-    // Check if user is already logged in on app start
-    dispatch(loadUserFromStorage());
+    // Attempt to fetch current user via cookie
+    dispatch(fetchCurrentUser());
   }, [dispatch]);
 
   const handleLogout = async () => {

@@ -41,13 +41,9 @@ const Auth = () => {
       if (isLogin) {
         await dispatch(loginUser({ phoneNumber: formData.phoneNumber })).unwrap();
       } else {
-        await dispatch(registerUser({ 
-          name: formData.name.trim(), 
-          phoneNumber: formData.phoneNumber 
-        })).unwrap();
+        await dispatch(registerUser({ name: formData.name.trim(), phoneNumber: formData.phoneNumber })).unwrap();
       }
     } catch (err) {
-      // Error is handled by Redux state
       console.error('Auth error:', err);
     }
   };

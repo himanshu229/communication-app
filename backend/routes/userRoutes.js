@@ -1,4 +1,5 @@
 const express = require('express');
+const auth = require('../middleware/auth');
 
 class UserRoutes {
   constructor(userController) {
@@ -18,11 +19,25 @@ class UserRoutes {
       }
     });
 
-    // Login route
+    // Login route - sets httpOnly cookie
     this.router.post('/users/login', (req, res) => {
       try {
         const result = this.userController.login(req.body);
-        res.status(result.success ? 200 : 401).json(result);
+        if (result.success && result.token) {
+          res.cookie('authToken', result.token, {
+            httpOnly: true,
+            sameSite: 'lax',
+            secure: false,
+            path: '/'
+          });
+        }
+        res.status(result.success ? 200 : (result.conflict ? 409 : 401)).json({
+          success: result.success,
+          conflict: result.conflict || false,
+          user: result.user || null,
+          userId: result.userId || null,
+          message: result.message || result.error || null
+        });
       } catch (error) {
         res.status(500).json({ success: false, message: 'Server error' });
       }
@@ -32,9 +47,49 @@ class UserRoutes {
     this.router.post('/users/force-login', (req, res) => {
       try {
         const result = this.userController.forceLogin(req.body);
-        res.status(result.success ? 200 : 401).json(result);
+        if (result.success && result.token) {
+          res.cookie('authToken', result.token, {
+            httpOnly: true,
+            sameSite: 'lax',
+            secure: false,
+            path: '/'
+          });
+        }
+        res.status(result.success ? 200 : 401).json({
+          success: result.success,
+          forced: result.forced || false,
+          user: result.user || null,
+          userId: result.userId || null,
+          message: result.message || result.error || null
+        });
       } catch (error) {
         res.status(500).json({ success: false, message: 'Server error' });
+      }
+    });
+
+  // Current user route (protected)
+  this.router.get('/users/me', auth, (req, res) => {
+      try {
+        if (!req.user || !req.user.id) {
+          return res.status(401).json({ success: false, error: 'Unauthorized' });
+        }
+        const user = this.userController.getUserById(req.user.id);
+        if (!user) {
+          return res.status(404).json({ success: false, error: 'User not found' });
+        }
+        res.json({ success: true, user: { id: user.id, name: user.name, phoneNumber: user.phoneNumber, isOnline: user.isOnline, lastSeen: user.lastSeen } });
+      } catch (error) {
+        res.status(500).json({ success: false, error: 'Server error' });
+      }
+    });
+
+    // Logout route - clear cookie
+    this.router.post('/users/logout', (req, res) => {
+      try {
+        res.clearCookie('authToken', { path: '/' });
+        res.json({ success: true });
+      } catch (error) {
+        res.status(500).json({ success: false, error: 'Server error' });
       }
     });
 
