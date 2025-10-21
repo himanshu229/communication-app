@@ -1,53 +1,43 @@
 import React, { useState } from 'react';
 import { User, Phone, MessageCircle, Shield } from 'lucide-react';
+import { useAppDispatch, useAuth } from '../hooks/redux';
+import { registerUser, loginUser, clearError } from '../store/slices/authSlice';
 
-const Auth = ({ onLogin }) => {
+const Auth = () => {
+  const dispatch = useAppDispatch();
+  const { error, isRegistering, isLoggingIn } = useAuth();
+  
   const [isLogin, setIsLogin] = useState(true);
   const [formData, setFormData] = useState({
     name: '',
     phoneNumber: ''
   });
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [formError, setFormError] = useState('');
+
+  const loading = isRegistering || isLoggingIn;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setLoading(true);
-    setError('');
+    setFormError('');
+    dispatch(clearError());
 
     // Validate form before submitting
     if (!validateForm()) {
-      setLoading(false);
       return;
     }
 
     try {
-      const endpoint = isLogin ? '/api/login' : '/api/register';
-      const payload = isLogin 
-        ? { phoneNumber: formData.phoneNumber }
-        : { name: formData.name.trim(), phoneNumber: formData.phoneNumber };
-
-      const response = await fetch(`http://localhost:5001${endpoint}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-      });
-
-      const data = await response.json();
-
-      if (data.success) {
-        localStorage.setItem('userId', data.userId);
-        localStorage.setItem('user', JSON.stringify(data.user));
-        onLogin(data.user);
+      if (isLogin) {
+        await dispatch(loginUser({ phoneNumber: formData.phoneNumber })).unwrap();
       } else {
-        setError(data.error || 'Something went wrong');
+        await dispatch(registerUser({ 
+          name: formData.name.trim(), 
+          phoneNumber: formData.phoneNumber 
+        })).unwrap();
       }
     } catch (err) {
-      setError('Connection error. Please try again.');
-    } finally {
-      setLoading(false);
+      // Error is handled by Redux state
+      console.error('Auth error:', err);
     }
   };
 
@@ -67,21 +57,31 @@ const Auth = ({ onLogin }) => {
         [name]: value
       });
     }
+
+    // Clear form error when user starts typing
+    if (formError) {
+      setFormError('');
+    }
+    if (error) {
+      dispatch(clearError());
+    }
   };
 
   const validateForm = () => {
     if (!isLogin && (!formData.name.trim() || formData.name.trim().length < 2)) {
-      setError('Name must be at least 2 characters long');
+      setFormError('Name must be at least 2 characters long');
       return false;
     }
     
     if (!formData.phoneNumber || formData.phoneNumber.length !== 10) {
-      setError('Phone number must be exactly 10 digits');
+      setFormError('Phone number must be exactly 10 digits');
       return false;
     }
     
     return true;
   };
+
+  const displayError = formError || error;
 
   return (
     <div className="flex justify-center items-center min-h-screen p-3 sm:p-5">
@@ -171,9 +171,9 @@ const Auth = ({ onLogin }) => {
             )}
           </div>
 
-          {error && (
+          {displayError && (
             <div className="bg-red-50 text-red-700 py-3 px-4 rounded-lg text-sm border-l-4 border-red-700">
-              {error}
+              {displayError}
             </div>
           )}
 

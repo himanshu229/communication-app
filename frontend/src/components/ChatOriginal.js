@@ -1,101 +1,144 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Users, Lock, LogOut, Circle, ArrowLeft } from 'lucide-react';
-import { useAppDispatch, useAuth, useUsers, useChat, useMessages } from '../hooks/redux';
-import { useSocket } from '../hooks/useSocket';
-import { fetchAllUsers } from '../store/slices/usersSlice';
-import { getOrCreateRoom, setSelectedUser, clearCurrentRoom } from '../store/slices/chatSlice';
-import { fetchRoomMessages, sendMessage as sendMessageAction, clearCurrentRoomMessages } from '../store/slices/messagesSlice';
+import io from 'socket.io-client';
+import { encryptMessage, decryptMessage } from '../utils/encryption';
 import MessagesContainer from './MessagesContainer';
 
-const Chat = ({ onLogout }) => {
-  const dispatch = useAppDispatch();
-  const { user } = useAuth(); // Get user from Redux state instead of props
-  const { usersList, onlineUsers } = useUsers();
-  const { currentRoom, selectedUser, typingUsers } = useChat();
-  const { currentRoomMessages, sending } = useMessages();
-  
+const Chat = ({ user, onLogout }) => {
+  const [socket, setSocket] = useState(null);
+  const [users, setUsers] = useState([]);
+  const [messages, setMessages] = useState([]);
   const [currentMessage, setCurrentMessage] = useState('');
+  const [selectedUser, setSelectedUser] = useState(null);
+  const [currentRoom, setCurrentRoom] = useState(null);
   const [isTyping, setIsTyping] = useState(false);
-  const [isMobile, setIsMobile] = useState(false);
+  const [typingUsers, setTypingUsers] = useState([]);
   const messagesEndRef = useRef(null);
   const typingTimeoutRef = useRef(null);
   const currentRoomRef = useRef(null);
 
-  // Socket connection and functions
-  const { 
-    connect, 
-    disconnect, 
-    sendMessage, 
-    emit,
-    createRoom, 
-    startTyping, 
-    stopTyping,
-    joinRoom,
-    leaveRoom
-  } = useSocket();
-
-  // Initialize socket connection and fetch users
-  useEffect(() => {
-    const socket = connect();
-    if (socket && user?.id) {
-      dispatch(fetchAllUsers(user.id));
+  const fetchUsers = useCallback(async () => {
+    try {
+      const response = await fetch('http://localhost:5001/api/users');
+      const userData = await response.json();
+      setUsers(userData.filter(u => u.id !== user.id));
+    } catch (error) {
+      console.error('Error fetching users:', error);
     }
+  }, [user.id]);
+
+  const fetchMessages = useCallback(async (roomId) => {
+    try {
+      const response = await fetch(`http://localhost:5001/api/messages/${roomId}`);
+      const messagesData = await response.json();
+      const decryptedMessages = messagesData.map(msg => ({
+        ...msg,
+        message: decryptMessage(msg.message)
+      }));
+      setMessages(decryptedMessages);
+    } catch (error) {
+      console.error('Error fetching messages:', error);
+    }
+  }, []);
+
+  useEffect(() => {
+    const newSocket = io('http://localhost:5001');
+    setSocket(newSocket);
+
+    // Notify server that user is online
+    newSocket.emit('user_online', user.id);
+
+    // Fetch all users
+    fetchUsers();
+
+    // Socket event listeners
+    newSocket.on('receive_message', (messageData) => {
+      // Only add message if it belongs to the current room
+      if (currentRoomRef.current && messageData.roomId === currentRoomRef.current.id) {
+        setMessages(prev => [...prev, {
+          ...messageData,
+          message: decryptMessage(messageData.message) // Decrypt the message
+        }]);
+      }
+    });
+
+    newSocket.on('user_status_changed', (data) => {
+      setUsers(prev => prev.map(u => 
+        u.id === data.userId 
+          ? { ...u, isOnline: data.isOnline }
+          : u
+      ));
+    });
+
+    newSocket.on('room_created', (room) => {
+      setCurrentRoom(room);
+      currentRoomRef.current = room;
+      newSocket.emit('join_room', room.id);
+      // Clear messages and typing indicators first, then fetch new ones
+      setMessages([]);
+      setTypingUsers([]);
+      // Use a small delay to ensure messages are cleared before fetching
+      setTimeout(() => {
+        fetchMessages(room.id);
+      }, 50);
+    });
+
+    newSocket.on('user_typing', (data) => {
+      // Only show typing indicator if it's for the current room and not from current user
+      if (data.userId !== user.id && currentRoomRef.current && data.roomId === currentRoomRef.current.id) {
+        setTypingUsers(prev => {
+          const filtered = prev.filter(u => u.userId !== data.userId);
+          if (data.isTyping) {
+            return [...filtered, data];
+          }
+          return filtered;
+        });
+      }
+    });
 
     return () => {
-      disconnect();
+      newSocket.disconnect();
     };
-  }, [connect, disconnect, dispatch, user?.id]);
+  }, [user.id, fetchUsers, fetchMessages]);
 
-  // Detect mobile viewport (simple matchMedia listener)
   useEffect(() => {
-    const mq = window.matchMedia('(max-width: 767px)');
-    const handleChange = (e) => setIsMobile(e.matches);
-    setIsMobile(mq.matches);
-    mq.addEventListener('change', handleChange);
-    return () => mq.removeEventListener('change', handleChange);
-  }, []);
+    scrollToBottom();
+  }, [messages]);
 
   // Keep currentRoomRef in sync with currentRoom state
   useEffect(() => {
     currentRoomRef.current = currentRoom;
   }, [currentRoom]);
 
-  // Scroll to bottom when messages change
-  useEffect(() => {
-    scrollToBottom();
-  }, [currentRoomMessages]);
-
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  const handleSendMessage = async (e) => {
+  const handleSendMessage = (e) => {
     e.preventDefault();
-    if (currentMessage.trim() && currentRoom && !sending) {
-      try {
-        // Dispatch Redux action for sending message
-        await dispatch(sendMessageAction({
-          roomId: currentRoom.id,
-          message: currentMessage,
-          senderId: user.id,
-          socketEmit: emit
-        })).unwrap();
+    if (currentMessage.trim() && socket && currentRoom) {
+      const encryptedMessage = encryptMessage(currentMessage);
+      
+      socket.emit('send_message', {
+        roomId: currentRoom.id,
+        message: currentMessage, // Plain text for local display
+        encryptedMessage: encryptedMessage, // Encrypted for transmission
+        senderId: user.id
+      });
 
-        setCurrentMessage('');
-        handleTyping(false);
-      } catch (error) {
-        console.error('Error sending message:', error);
-      }
+      setCurrentMessage('');
+      handleTyping(false);
     }
   };
 
   const handleTyping = (typing) => {
-    if (currentRoom && user?.id && user?.name) {
-      if (typing) {
-        startTyping(currentRoom.id, user.id, user.name);
-      } else {
-        stopTyping(currentRoom.id, user.id, user.name);
-      }
+    if (socket && currentRoom) {
+      socket.emit('typing', {
+        roomId: currentRoom.id,
+        userId: user.id,
+        userName: user.name,
+        isTyping: typing
+      });
     }
   };
 
@@ -115,65 +158,74 @@ const Chat = ({ onLogout }) => {
   };
 
   const createDirectChat = async (targetUser) => {
-    if (!user?.id) return;
-    
-    try {
-      // Leave previous room if exists for privacy isolation
-      const prevRoomId = currentRoomRef.current?.id;
-      if (prevRoomId) {
-        leaveRoom(prevRoomId);
-      }
+    if (socket) {
+      try {
+        // Clear messages and typing indicators immediately when switching users
+        setMessages([]);
+        setTypingUsers([]);
+        
+        // First check if a room already exists between these users
+        const response = await fetch(`http://localhost:5001/api/room/${user.id}/${targetUser.id}`);
+        const data = await response.json();
 
-      // Clear current room state & messages before switching
-      dispatch(clearCurrentRoom());
-      dispatch(clearCurrentRoomMessages());
-      dispatch(setSelectedUser(targetUser));
+        if (data.success && data.room) {
+          // Use existing room
+          setCurrentRoom(data.room);
+          currentRoomRef.current = data.room;
+          setSelectedUser(targetUser);
+          socket.emit('join_room', data.room.id);
+          
+          // Load existing messages
+          const decryptedMessages = data.messages.map(msg => ({
+            ...msg,
+            message: decryptMessage(msg.message)
+          }));
+          setMessages(decryptedMessages);
+          
+          console.log(`Joined existing room: ${data.room.id}`);
+        } else {
+          // Create new room - messages will be loaded via room_created event
+          const participants = [user.id, targetUser.id];
+          const roomName = `Chat with ${targetUser.name}`;
 
-      // Try to get or create room between users
-      const result = await dispatch(getOrCreateRoom({
-        userId1: user.id,
-        userId2: targetUser.id
-      })).unwrap();
+          socket.emit('create_room', {
+            participants,
+            roomName
+          });
 
-      if (result.success && result.room) {
-        // Join only the specific room for A<->B
-        joinRoom(result.room.id);
-        dispatch(fetchRoomMessages(result.room.id));
-      } else {
-        // Create new room via socket
+          setSelectedUser(targetUser);
+          console.log(`Creating new room for chat with ${targetUser.name}`);
+        }
+      } catch (error) {
+        console.error('Error checking for existing room:', error);
+        // Clear messages and typing indicators on error too
+        setMessages([]);
+        setTypingUsers([]);
+        // Fallback to creating new room
         const participants = [user.id, targetUser.id];
         const roomName = `Chat with ${targetUser.name}`;
 
-        createRoom({
+        socket.emit('create_room', {
           participants,
           roomName
         });
-      }
-    } catch (error) {
-      console.error('Error creating direct chat:', error);
-      // Fallback to creating new room
-      const participants = [user.id, targetUser.id];
-      const roomName = `Chat with ${targetUser.name}`;
 
-      createRoom({
-        participants,
-        roomName
-      });
+        setSelectedUser(targetUser);
+      }
     }
   };
 
   const handleUserSelect = (targetUser) => {
+    // Create or join direct chat with selected user
     createDirectChat(targetUser);
   };
 
   const handleBackToUsers = () => {
-    const prevRoomId = currentRoomRef.current?.id;
-    if (prevRoomId) {
-      leaveRoom(prevRoomId);
-    }
-    dispatch(setSelectedUser(null));
-    dispatch(clearCurrentRoom());
-    dispatch(clearCurrentRoomMessages());
+    setSelectedUser(null);
+    setCurrentRoom(null);
+    currentRoomRef.current = null;
+    setMessages([]);
+    setTypingUsers([]);
   };
 
   const formatTime = (timestamp) => {
@@ -182,16 +234,6 @@ const Chat = ({ onLogout }) => {
       minute: '2-digit' 
     });
   };
-
-  // Safety check: if user is not loaded yet, show loading
-  if (!user) {
-    return (
-      <div className="flex flex-col items-center justify-center h-screen gap-5 text-white">
-        <div className="w-10 h-10 border-4 border-white border-opacity-30 border-t-white rounded-full animate-spin"></div>
-        <p className="text-lg font-medium m-0">Loading user data...</p>
-      </div>
-    );
-  }
 
   return (
     <div className="flex flex-col h-screen bg-white">
@@ -207,34 +249,13 @@ const Chat = ({ onLogout }) => {
               <ArrowLeft size={18} className="sm:w-5 sm:h-5" />
             </button>
           )}
-          {(() => {
-            // Decide which user to display: on mobile show selectedUser if exists, else auth user
-            const displayUser = isMobile && selectedUser ? selectedUser : user;
-            return (
-              <>
-                <div className="relative">
-                  <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-white bg-opacity-20 flex items-center justify-center font-semibold text-sm sm:text-base">
-                    {displayUser?.name?.charAt(0)?.toUpperCase() || 'U'}
-                  </div>
-                  {/* Online/Offline indicator */}
-                  <span
-                    className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 sm:w-3.5 sm:h-3.5 rounded-full border border-white shadow ${
-                      displayUser?.isOnline ? 'bg-green-500' : 'bg-gray-400'
-                    }`}
-                    title={displayUser?.isOnline ? 'Online' : 'Offline'}
-                  ></span>
-                </div>
-                <div className="min-w-0 flex-1">
-                  <h3 className="m-0 text-sm sm:text-base font-semibold truncate">
-                    {displayUser?.name || 'Loading...'}
-                  </h3>
-                  <span className="text-xs opacity-80 block truncate">
-                    {displayUser?.phoneNumber || ''}
-                  </span>
-                </div>
-              </>
-            );
-          })()}
+          <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-white bg-opacity-20 flex items-center justify-center font-semibold text-sm sm:text-base">
+            {user.name.charAt(0).toUpperCase()}
+          </div>
+          <div className="min-w-0 flex-1">
+            <h3 className="m-0 text-sm sm:text-base font-semibold truncate">{user.name}</h3>
+            <span className="text-xs opacity-80 block truncate">{user.phoneNumber}</span>
+          </div>
         </div>
         
         <div className="flex items-center gap-1 sm:gap-3">
@@ -270,13 +291,13 @@ const Chat = ({ onLogout }) => {
             <h4 className="m-0 flex items-center gap-2 text-gray-800 flex-1 text-sm sm:text-base">
               <Users size={18} className="sm:w-5 sm:h-5" /> Users
             </h4>
-            <span className="text-xs text-gray-600 bg-gray-200 px-2 py-1 rounded-xl" title={`Online: ${onlineUsers.length}`}>
-              {onlineUsers.length - 1} online
+            <span className="text-xs text-gray-600 bg-gray-200 px-2 py-1 rounded-xl">
+              {users.length} online
             </span>
           </div>
           
           <div className="flex-1 overflow-y-auto p-2 md:p-2">
-            {usersList.map(u => (
+            {users.map(u => (
               <div
                 key={u.id}
                 className={`flex items-center gap-3 p-4 md:p-3 rounded-xl cursor-pointer transition-all duration-300 mb-2 md:mb-1 ${
@@ -303,7 +324,7 @@ const Chat = ({ onLogout }) => {
               </div>
             ))}
             
-            {usersList.length === 0 && (
+            {users.length === 0 && (
               <div className="flex flex-col items-center justify-center py-16 md:py-10 px-5 text-center text-gray-500">
                 <Users size={64} className="md:w-12 md:h-12 mb-4 md:mb-3 opacity-50" />
                 <h3 className="text-lg md:text-base font-semibold mb-2 text-gray-700">No Users Available</h3>
@@ -316,7 +337,7 @@ const Chat = ({ onLogout }) => {
         {/* Messages Area */}
         <MessagesContainer
           selectedUser={selectedUser}
-          messages={currentRoomMessages}
+          messages={messages}
           typingUsers={typingUsers}
           user={user}
           currentMessage={currentMessage}
@@ -324,7 +345,6 @@ const Chat = ({ onLogout }) => {
           handleSendMessage={handleSendMessage}
           formatTime={formatTime}
           messagesEndRef={messagesEndRef}
-          sending={sending}
         />
       </div>
     </div>

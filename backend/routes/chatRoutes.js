@@ -68,6 +68,17 @@ class ChatRoutes {
       }
     });
 
+    // Generic messages endpoint (for frontend compatibility)
+    this.router.post('/messages', (req, res) => {
+      try {
+        const { roomId, senderId, message } = req.body;
+        const messageData = this.chatController.addMessage(roomId, senderId, message);
+        res.status(200).json({ success: true, data: messageData });
+      } catch (error) {
+        res.status(500).json({ success: false, message: 'Server error' });
+      }
+    });
+
     // Get all rooms for a user route
     this.router.get('/user/:id/rooms', (req, res) => {
       try {

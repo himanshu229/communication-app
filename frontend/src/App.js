@@ -1,37 +1,28 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect } from 'react';
+import { useAppDispatch, useAuth } from './hooks/redux';
+import { loadUserFromStorage, logoutUser } from './store/slices/authSlice';
+import { socketService } from './services/socket';
 import Auth from './components/Auth';
 import Chat from './components/Chat';
 
 function App() {
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const dispatch = useAppDispatch();
+  const { user, isAuthenticated, loading } = useAuth();
 
   useEffect(() => {
-    // Check if user is already logged in
-    const savedUserId = localStorage.getItem('userId');
-    const savedUser = localStorage.getItem('user');
-    
-    if (savedUserId && savedUser) {
-      try {
-        setUser(JSON.parse(savedUser));
-      } catch (error) {
-        console.error('Error parsing saved user:', error);
-        localStorage.removeItem('userId');
-        localStorage.removeItem('user');
-      }
+    // Check if user is already logged in on app start
+    dispatch(loadUserFromStorage());
+  }, [dispatch]);
+
+  const handleLogout = async () => {
+    // Disconnect socket before logging out
+    if (user?.id) {
+      socketService.userOffline(user.id);
     }
+    socketService.disconnect();
     
-    setLoading(false);
-  }, []);
-
-  const handleLogin = (userData) => {
-    setUser(userData);
-  };
-
-  const handleLogout = () => {
-    localStorage.removeItem('userId');
-    localStorage.removeItem('user');
-    setUser(null);
+    // Then dispatch logout action
+    dispatch(logoutUser());
   };
 
   if (loading) {
@@ -45,10 +36,10 @@ function App() {
 
   return (
     <div className="text-center">
-      {user ? (
-        <Chat user={user} onLogout={handleLogout} />
+      {isAuthenticated && user ? (
+        <Chat onLogout={handleLogout} />
       ) : (
-        <Auth onLogin={handleLogin} />
+        <Auth />
       )}
     </div>
   );

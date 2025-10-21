@@ -10,13 +10,34 @@ class SocketController {
 
     // Handle user coming online
     socket.on('user_online', (userId) => {
+      console.log(`User ${userId} coming online with socket ${socket.id}`);
       const user = this.userController.updateUserStatus(userId, true, socket.id);
       if (user) {
-        // Broadcast user online status
-        socket.broadcast.emit('user_status_changed', {
+        // Store userId on socket for disconnect handling
+        socket.userId = userId;
+        
+        // Emit to all (including sender) so the initiating client updates too
+        this.io.emit('user_status_changed', {
           userId,
           isOnline: true
         });
+        
+        console.log(`User ${userId} (${user.name}) is now online`);
+      }
+    });
+
+    // Handle user going offline (explicit logout)
+    socket.on('user_offline', (userId) => {
+      console.log(`User ${userId} going offline explicitly`);
+      const user = this.userController.updateUserStatus(userId, false);
+      if (user) {
+        // Emit to all (including sender)
+        this.io.emit('user_status_changed', {
+          userId,
+          isOnline: false
+        });
+        
+        console.log(`User ${userId} (${user.name}) logged out`);
       }
     });
 
@@ -55,9 +76,9 @@ class SocketController {
       }
     });
 
-    // Handle typing indicators
+    // Handle typing indicators (emit to entire room including sender for self typing display)
     socket.on('typing', (data) => {
-      socket.to(data.roomId).emit('user_typing', {
+      this.io.to(data.roomId).emit('user_typing', {
         userId: data.userId,
         userName: data.userName,
         isTyping: data.isTyping,
@@ -69,18 +90,29 @@ class SocketController {
     socket.on('disconnect', () => {
       console.log('User disconnected:', socket.id);
       
-      // Find user by socket ID and mark as offline
-      const allUsers = this.userController.dataService.getAllUsers();
-      const user = allUsers.find(u => u.socketId === socket.id);
+      let userId = socket.userId;
       
-      if (user) {
-        this.userController.updateUserStatus(user.id, false);
+      // If userId wasn't stored on socket, find user by socket ID
+      if (!userId) {
+        const allUsers = this.userController.dataService.getAllUsers();
+        const user = allUsers.find(u => u.socketId === socket.id);
+        userId = user?.id;
+      }
+      
+      if (userId) {
+        const user = this.userController.updateUserStatus(userId, false);
         
-        // Broadcast user offline status
-        socket.broadcast.emit('user_status_changed', {
-          userId: user.id,
-          isOnline: false
-        });
+        if (user) {
+          // Emit to all (including sender)
+            this.io.emit('user_status_changed', {
+            userId,
+            isOnline: false
+          });
+          
+          console.log(`User ${userId} (${user.name}) is now offline`);
+        }
+      } else {
+        console.log('Could not identify user for disconnect event');
       }
     });
   };

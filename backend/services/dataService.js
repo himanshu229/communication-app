@@ -18,6 +18,9 @@ class DataService {
     this.chatRooms = new Map(Object.entries(this.readJSONFile(this.CHAT_ROOMS_FILE, {})));
     this.messages = new Map(Object.entries(this.readJSONFile(this.MESSAGES_FILE, {})));
     
+    // Reset all users to offline on server start
+    this.resetAllUsersOffline();
+    
     // Set up file watchers for auto-reload
     this.setupFileWatchers();
   }
@@ -241,6 +244,31 @@ class DataService {
   // Periodic save method (alias for backward compatibility)
   periodicSave() {
     this.saveAllData();
+  }
+
+  // Reset all users to offline status on server start
+  resetAllUsersOffline() {
+    console.log('Resetting all users to offline status...');
+    let updatedCount = 0;
+    
+    for (const [userId, user] of this.users) {
+      if (user.isOnline) {
+        user.isOnline = false;
+        user.lastSeen = new Date();
+        // Remove socket ID since they're not connected
+        if (user.socketId) {
+          delete user.socketId;
+        }
+        updatedCount++;
+      }
+    }
+    
+    if (updatedCount > 0) {
+      this.saveUsers();
+      console.log(`✅ Reset ${updatedCount} users to offline status`);
+    } else {
+      console.log('ℹ️ No users needed status reset');
+    }
   }
 }
 

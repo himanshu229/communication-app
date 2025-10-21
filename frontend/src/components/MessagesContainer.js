@@ -10,7 +10,8 @@ const MessagesContainer = ({
   handleInputChange, 
   handleSendMessage, 
   formatTime, 
-  messagesEndRef 
+  messagesEndRef,
+  sending = false
 }) => {
   return (
     <div className="flex-1 flex flex-col h-full">
@@ -78,14 +79,18 @@ const MessagesContainer = ({
               />
               <button
                 type="submit"
-                disabled={!currentMessage.trim()}
+                disabled={!currentMessage.trim() || sending}
                 className={`p-2 rounded-lg transition-colors ${
-                  currentMessage.trim() 
+                  currentMessage.trim() && !sending
                     ? 'bg-blue-500 hover:bg-blue-600 text-white' 
                     : 'bg-gray-300 text-gray-500 cursor-not-allowed'
                 }`}
               >
-                <Send size={18} className="sm:w-5 sm:h-5" />
+                {sending ? (
+                  <div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"></div>
+                ) : (
+                  <Send size={18} className="sm:w-5 sm:h-5" />
+                )}
               </button>
             </div>
           </form>

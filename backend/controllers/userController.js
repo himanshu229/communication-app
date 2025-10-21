@@ -47,7 +47,7 @@ class UserController {
       return { 
         success: true, 
         userId,
-        user: { id: userId, name: name.trim(), phoneNumber }
+        user: { id: userId, name: name.trim(), phoneNumber, isOnline: false, lastSeen: user.lastSeen }
       };
     } catch (error) {
       console.error('Registration error:', error);
@@ -78,7 +78,7 @@ class UserController {
       return { 
         success: true, 
         userId: user.id,
-        user: { id: user.id, name: user.name, phoneNumber: user.phoneNumber }
+        user: { id: user.id, name: user.name, phoneNumber: user.phoneNumber, isOnline: user.isOnline, lastSeen: user.lastSeen }
       };
     } catch (error) {
       console.error('Login error:', error);

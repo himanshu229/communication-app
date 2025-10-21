@@ -9,7 +9,7 @@ class UserRoutes {
 
   setupRoutes = () => {
     // Register route
-    this.router.post('/register', (req, res) => {
+    this.router.post('/users', (req, res) => {
       try {
         const result = this.userController.register(req.body);
         res.status(result.success ? 200 : 400).json(result);
@@ -19,7 +19,7 @@ class UserRoutes {
     });
 
     // Login route
-    this.router.post('/login', (req, res) => {
+    this.router.post('/users/login', (req, res) => {
       try {
         const result = this.userController.login(req.body);
         res.status(result.success ? 200 : 401).json(result);
@@ -39,7 +39,7 @@ class UserRoutes {
     });
 
     // Get user by ID route
-    this.router.get('/user/:id', (req, res) => {
+    this.router.get('/users/:id', (req, res) => {
       try {
         const user = this.userController.getUserById(req.params.id);
         if (user) {
@@ -53,7 +53,7 @@ class UserRoutes {
     });
 
     // Update user status route
-    this.router.put('/user/:id/status', (req, res) => {
+    this.router.put('/users/:id/status', (req, res) => {
       try {
         const { isOnline, socketId } = req.body;
         const user = this.userController.updateUserStatus(req.params.id, isOnline, socketId);
