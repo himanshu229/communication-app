@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const DataInitializer = require('./dataInitializer');
 
 class DataService {
   constructor() {
@@ -8,10 +9,9 @@ class DataService {
     this.CHAT_ROOMS_FILE = path.join(this.DATA_DIR, 'chatRooms.json');
     this.MESSAGES_FILE = path.join(this.DATA_DIR, 'messages.json');
     
-    // Ensure data directory exists
-    if (!fs.existsSync(this.DATA_DIR)) {
-      fs.mkdirSync(this.DATA_DIR, { recursive: true });
-    }
+    // Initialize data files if they don't exist
+    this.dataInitializer = new DataInitializer(this.DATA_DIR);
+    this.dataInitializer.initializeDataFiles();
 
     // Load initial data from JSON files
     this.users = new Map(Object.entries(this.readJSONFile(this.USERS_FILE, {})));

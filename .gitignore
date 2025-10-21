@@ -137,6 +137,9 @@ dist/
 frontend/build/
 
 # Backend specific
+# Data files - auto-generated, should not be tracked
+backend/data/*.json
+
 # Production data (keep development data for now)
 backend/data/production/
 
