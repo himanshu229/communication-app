@@ -1,0 +1,139 @@
+const { v4: uuidv4 } = require('uuid');
+
+class UserController {
+  constructor(dataService) {
+    this.dataService = dataService;
+  }
+
+  // Register a new user
+  register = (userData) => {
+    try {
+      const { name, phoneNumber } = userData;
+      
+      // Validation
+      if (!name || !phoneNumber) {
+        return { success: false, error: 'Name and phone number are required' };
+      }
+
+      // Validate name - must be at least 2 characters
+      if (name.trim().length < 2) {
+        return { success: false, error: 'Name must be at least 2 characters long' };
+      }
+
+      // Validate phone number - must be exactly 10 digits
+      const phoneRegex = /^\d{10}$/;
+      if (!phoneRegex.test(phoneNumber)) {
+        return { success: false, error: 'Phone number must be exactly 10 digits' };
+      }
+
+      // Check if phone number already exists
+      const existingUser = this.dataService.findUserByPhone(phoneNumber);
+      if (existingUser) {
+        return { success: false, error: 'Phone number already registered' };
+      }
+
+      // Create new user
+      const userId = uuidv4();
+      const user = {
+        id: userId,
+        name: name.trim(),
+        phoneNumber,
+        isOnline: false,
+        lastSeen: new Date()
+      };
+
+      this.dataService.addUser(user);
+      
+      return { 
+        success: true, 
+        userId,
+        user: { id: userId, name: name.trim(), phoneNumber }
+      };
+    } catch (error) {
+      console.error('Registration error:', error);
+      return { success: false, error: 'Internal server error' };
+    }
+  };
+
+  // Login existing user
+  login = (loginData) => {
+    try {
+      const { phoneNumber } = loginData;
+      
+      if (!phoneNumber) {
+        return { success: false, error: 'Phone number is required' };
+      }
+
+      // Validate phone number format
+      const phoneRegex = /^\d{10}$/;
+      if (!phoneRegex.test(phoneNumber)) {
+        return { success: false, error: 'Phone number must be exactly 10 digits' };
+      }
+
+      const user = this.dataService.findUserByPhone(phoneNumber);
+      if (!user) {
+        return { success: false, error: 'User not found' };
+      }
+
+      return { 
+        success: true, 
+        userId: user.id,
+        user: { id: user.id, name: user.name, phoneNumber: user.phoneNumber }
+      };
+    } catch (error) {
+      console.error('Login error:', error);
+      return { success: false, error: 'Internal server error' };
+    }
+  };
+
+  // Get all users
+  getAllUsers = () => {
+    try {
+      const userList = this.dataService.getAllUsers().map(user => ({
+        id: user.id,
+        name: user.name,
+        phoneNumber: user.phoneNumber,
+        isOnline: user.isOnline,
+        lastSeen: user.lastSeen
+      }));
+      
+      return userList;
+    } catch (error) {
+      console.error('Get users error:', error);
+      return [];
+    }
+  };
+
+  // Update user status
+  updateUserStatus = (userId, isOnline, socketId = null) => {
+    try {
+      const updates = {
+        isOnline,
+        lastSeen: new Date()
+      };
+      
+      if (socketId) {
+        updates.socketId = socketId;
+      } else {
+        // Remove socketId when user goes offline
+        const user = this.dataService.getUser(userId);
+        if (user && user.socketId) {
+          delete user.socketId;
+          updates.socketId = undefined;
+        }
+      }
+
+      return this.dataService.updateUser(userId, updates);
+    } catch (error) {
+      console.error('Update user status error:', error);
+      return null;
+    }
+  };
+
+  // Get user by ID
+  getUserById = (userId) => {
+    return this.dataService.getUser(userId);
+  };
+}
+
+module.exports = UserController;
