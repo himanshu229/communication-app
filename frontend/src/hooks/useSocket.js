@@ -59,10 +59,11 @@ export const useSocket = () => {
       socketService.joinRoom(room.id);
     });
 
-    // Typing indicators (include self typing)
+    // Typing indicators (exclude self typing)
     socketService.onUserTyping((data) => {
       const activeRoom = currentRoomRef.current;
-      if (activeRoom && data.roomId === activeRoom.id) {
+      // Only show typing for other users, not self
+      if (activeRoom && data.roomId === activeRoom.id && data.userId !== userId) {
         if (data.isTyping) {
           dispatch(addTypingUser({
             userId: data.userId,
