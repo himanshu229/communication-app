@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Users, Lock, LogOut, Circle, ArrowLeft } from 'lucide-react';
+import { Users, Lock, LogOut, Circle, ArrowLeft, Video, Phone } from 'lucide-react';
 import { useAppDispatch, useAuth, useUsers, useChat, useMessages } from '../hooks/redux';
 import { useSocket } from '../hooks/useSocket';
 import { fetchAllUsers } from '../store/slices/usersSlice';
 import { getOrCreateRoom, setSelectedUser, clearCurrentRoom } from '../store/slices/chatSlice';
 import { fetchRoomMessages, sendMessage as sendMessageAction, clearCurrentRoomMessages } from '../store/slices/messagesSlice';
+import { initiateCall, setLocalUserId } from '../store/slices/callSlice';
 import MessagesContainer from './MessagesContainer';
 
 const Chat = ({ onLogout }) => {
@@ -31,7 +32,8 @@ const Chat = ({ onLogout }) => {
     startTyping, 
     stopTyping,
     joinRoom,
-    leaveRoom
+    leaveRoom,
+    initiateCall: socketInitiateCall
   } = useSocket();
 
   // Initialize socket connection and fetch users
@@ -39,6 +41,7 @@ const Chat = ({ onLogout }) => {
     const socket = connect();
     if (socket && user?.id) {
       dispatch(fetchAllUsers(user.id));
+      dispatch(setLocalUserId(user.id));
     }
 
     return () => {
@@ -176,6 +179,40 @@ const Chat = ({ onLogout }) => {
     dispatch(clearCurrentRoomMessages());
   };
 
+  const handleInitiateCall = (callType) => {
+    if (!selectedUser || !currentRoom || !user?.id) {
+      console.error('Cannot initiate call: missing required data');
+      return;
+    }
+
+    // Dispatch Redux action to initiate call
+    dispatch(initiateCall({
+      userId: selectedUser.id,
+      userName: selectedUser.name,
+      callType,
+      roomId: currentRoom.id
+    }));
+
+    // Send call initiation via socket
+    if (socketInitiateCall) {
+      socketInitiateCall({
+        to: selectedUser.id,
+        from: user.id,
+        fromName: user.name,
+        callType,
+        roomId: currentRoom.id
+      });
+    }
+  };
+
+  const handleVideoCall = () => {
+    handleInitiateCall('video');
+  };
+
+  const handleVoiceCall = () => {
+    handleInitiateCall('voice');
+  };
+
   const formatTime = (timestamp) => {
     return new Date(timestamp).toLocaleTimeString([], { 
       hour: '2-digit', 
@@ -238,6 +275,29 @@ const Chat = ({ onLogout }) => {
         </div>
         
         <div className="flex items-center gap-1 sm:gap-3">
+          {/* Call buttons - only show when user is selected and online */}
+          {selectedUser && selectedUser.isOnline && currentRoom && (
+            <div className="flex items-center gap-2">
+              {/* Video Call Button */}
+              <button
+                onClick={handleVideoCall}
+                className="p-2 bg-white bg-opacity-20 border-none rounded-full text-white cursor-pointer transition-all duration-300 hover:bg-opacity-30 hover:scale-110 flex items-center justify-center"
+                title="Start video call"
+              >
+                <Video size={18} className="sm:w-5 sm:h-5" />
+              </button>
+              
+              {/* Voice Call Button */}
+              <button
+                onClick={handleVoiceCall}
+                className="p-2 bg-white bg-opacity-20 border-none rounded-full text-white cursor-pointer transition-all duration-300 hover:bg-opacity-30 hover:scale-110 flex items-center justify-center"
+                title="Start voice call"
+              >
+                <Phone size={18} className="sm:w-5 sm:h-5" />
+              </button>
+            </div>
+          )}
+
           {currentRoom && selectedUser && (
             <div className="hidden sm:flex items-center gap-1.5 px-3 py-2 bg-white bg-opacity-20 rounded-2xl text-sm">
               <Lock size={16} />

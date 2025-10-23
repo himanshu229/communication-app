@@ -10,6 +10,11 @@ import {
   removeTypingUser, 
   clearTypingUsers 
 } from '../store/slices/chatSlice';
+import { 
+  receiveIncomingCall,
+  updateCallStatus,
+  endCall
+} from '../store/slices/callSlice';
 import { decryptMessage } from '../utils/encryption';
 
 export const useSocket = () => {
@@ -97,6 +102,55 @@ export const useSocket = () => {
       socketService.disconnect();
     });
 
+    // Call-related event listeners
+    socketService.onIncomingCall((callData) => {
+      console.log('Incoming call received:', callData);
+      dispatch(receiveIncomingCall({
+        callerId: callData.from,
+        callerName: callData.fromName,
+        callType: callData.callType,
+        roomId: callData.roomId
+      }));
+    });
+
+    socketService.onCallAccepted((callData) => {
+      console.log('Call accepted:', callData);
+      dispatch(updateCallStatus('connected'));
+    });
+
+    socketService.onCallRejected((callData) => {
+      console.log('Call rejected:', callData);
+      dispatch(endCall());
+    });
+
+    socketService.onCallEnded((callData) => {
+      console.log('Call ended:', callData);
+      dispatch(endCall());
+    });
+
+    socketService.onCallOffer((offerData) => {
+      console.log('WebRTC offer received:', offerData);
+      // This will be handled by the WebRTC service in VideoCall component
+      window.dispatchEvent(new CustomEvent('webrtc-offer', { detail: offerData }));
+    });
+
+    socketService.onCallAnswer((answerData) => {
+      console.log('WebRTC answer received:', answerData);
+      // This will be handled by the WebRTC service in VideoCall component
+      window.dispatchEvent(new CustomEvent('webrtc-answer', { detail: answerData }));
+    });
+
+    socketService.onIceCandidate((candidateData) => {
+      console.log('ICE candidate received:', candidateData);
+      // This will be handled by the WebRTC service in VideoCall component
+      window.dispatchEvent(new CustomEvent('webrtc-ice-candidate', { detail: candidateData }));
+    });
+
+    socketService.onCallStatusUpdate((statusData) => {
+      console.log('Call status update:', statusData);
+      dispatch(updateCallStatus(statusData.status));
+    });
+
   // Intentionally excluding currentRoom from deps; we use ref to avoid stale closure without re-registering listeners per room change
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dispatch, userId]);
@@ -165,6 +219,35 @@ export const useSocket = () => {
     return socketService.getConnectionStatus();
   }, []);
 
+  // Call-related methods
+  const initiateCall = useCallback((callData) => {
+    return socketService.initiateCall(callData);
+  }, []);
+
+  const answerCall = useCallback((callData) => {
+    return socketService.answerCall(callData);
+  }, []);
+
+  const rejectCall = useCallback((callData) => {
+    return socketService.rejectCall(callData);
+  }, []);
+
+  const endCall = useCallback((callData) => {
+    return socketService.endCall(callData);
+  }, []);
+
+  const sendCallOffer = useCallback((offerData) => {
+    return socketService.sendCallOffer(offerData);
+  }, []);
+
+  const sendCallAnswer = useCallback((answerData) => {
+    return socketService.sendCallAnswer(answerData);
+  }, []);
+
+  const sendIceCandidate = useCallback((candidateData) => {
+    return socketService.sendIceCandidate(candidateData);
+  }, []);
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
@@ -184,6 +267,14 @@ export const useSocket = () => {
     stopTyping,
     getConnectionStatus,
     isConnected: socketService.isConnected,
+    // Call-related methods
+    initiateCall,
+    answerCall,
+    rejectCall,
+    endCall: endCall,
+    sendCallOffer,
+    sendCallAnswer,
+    sendIceCandidate,
   };
 };
 

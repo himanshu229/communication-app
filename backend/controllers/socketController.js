@@ -86,6 +86,109 @@ class SocketController {
       });
     });
 
+    // Call-related handlers
+    socket.on('initiate_call', (data) => {
+      console.log(`Call initiated from ${data.from} to ${data.to}:`, data);
+      const targetUser = this.userController.getUserById(data.to);
+      
+      if (targetUser && targetUser.socketId && targetUser.isOnline) {
+        this.io.to(targetUser.socketId).emit('incoming_call', {
+          from: data.from,
+          fromName: data.fromName,
+          callType: data.callType,
+          roomId: data.roomId
+        });
+      } else {
+        // User is offline or not found
+        this.io.to(socket.id).emit('call_failed', {
+          reason: 'User is offline or not found'
+        });
+      }
+    });
+
+    socket.on('answer_call', (data) => {
+      console.log(`Call answered by ${data.from} to ${data.to}:`, data);
+      const targetUser = this.userController.getUserById(data.to);
+      
+      if (targetUser && targetUser.socketId) {
+        this.io.to(targetUser.socketId).emit('call_accepted', {
+          from: data.from
+        });
+      }
+    });
+
+    socket.on('reject_call', (data) => {
+      console.log(`Call rejected by ${data.from} to ${data.to}:`, data);
+      const targetUser = this.userController.getUserById(data.to);
+      
+      if (targetUser && targetUser.socketId) {
+        this.io.to(targetUser.socketId).emit('call_rejected', {
+          from: data.from
+        });
+      }
+    });
+
+    socket.on('end_call', (data) => {
+      console.log(`Call ended by ${data.from} to ${data.to}:`, data);
+      const targetUser = this.userController.getUserById(data.to);
+      
+      if (targetUser && targetUser.socketId) {
+        this.io.to(targetUser.socketId).emit('call_ended', {
+          from: data.from
+        });
+      }
+    });
+
+    // WebRTC signaling handlers
+    socket.on('call_offer', (data) => {
+      console.log(`WebRTC offer from ${data.from} to ${data.to}`);
+      const targetUser = this.userController.getUserById(data.to);
+      
+      if (targetUser && targetUser.socketId) {
+        this.io.to(targetUser.socketId).emit('call_offer', {
+          from: data.from,
+          signal: data.signal,
+          callType: data.callType
+        });
+      }
+    });
+
+    socket.on('call_answer', (data) => {
+      console.log(`WebRTC answer from ${data.from} to ${data.to}`);
+      const targetUser = this.userController.getUserById(data.to);
+      
+      if (targetUser && targetUser.socketId) {
+        this.io.to(targetUser.socketId).emit('call_answer', {
+          from: data.from,
+          signal: data.signal
+        });
+      }
+    });
+
+    socket.on('ice_candidate', (data) => {
+      console.log(`ICE candidate from ${data.from} to ${data.to}`);
+      const targetUser = this.userController.getUserById(data.to);
+      
+      if (targetUser && targetUser.socketId) {
+        this.io.to(targetUser.socketId).emit('ice_candidate', {
+          from: data.from,
+          candidate: data.candidate
+        });
+      }
+    });
+
+    socket.on('call_status_update', (data) => {
+      console.log(`Call status update from ${data.from} to ${data.to}:`, data.status);
+      const targetUser = this.userController.getUserById(data.to);
+      
+      if (targetUser && targetUser.socketId) {
+        this.io.to(targetUser.socketId).emit('call_status_update', {
+          from: data.from,
+          status: data.status
+        });
+      }
+    });
+
     // Handle disconnection
     socket.on('disconnect', () => {
       console.log('User disconnected:', socket.id);

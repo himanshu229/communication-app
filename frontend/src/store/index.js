@@ -3,6 +3,7 @@ import authSlice from './slices/authSlice';
 import chatSlice from './slices/chatSlice';
 import messagesSlice from './slices/messagesSlice';
 import usersSlice from './slices/usersSlice';
+import callSlice from './slices/callSlice';
 
 export const store = configureStore({
   reducer: {
@@ -10,6 +11,7 @@ export const store = configureStore({
     chat: chatSlice,
     messages: messagesSlice,
     users: usersSlice,
+    call: callSlice,
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({
@@ -18,8 +20,8 @@ export const store = configureStore({
         ignoredActions: ['socket/connect', 'socket/disconnect'],
         // Ignore these field paths in all actions
         ignoredActionsPaths: ['meta.arg', 'payload.timestamp'],
-        // Ignore these paths in the state
-        ignoredPaths: ['socket.instance'],
+        // Ignore these paths in the state (MediaStream objects are not serializable)
+        ignoredPaths: ['socket.instance', 'call.localStream', 'call.remoteStream'],
       },
     }),
   devTools: process.env.NODE_ENV !== 'production',

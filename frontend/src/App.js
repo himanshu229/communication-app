@@ -1,13 +1,17 @@
 import React, { useEffect } from 'react';
-import { useAppDispatch, useAuth } from './hooks/redux';
+import { useAppDispatch, useAuth, useCall, useIncomingCall } from './hooks/redux';
 import { fetchCurrentUser, logoutUser } from './store/slices/authSlice';
 import { socketService } from './services/socket';
 import Auth from './components/Auth';
 import Chat from './components/Chat';
+import VideoCall from './components/VideoCall';
+import IncomingCall from './components/IncomingCall';
 
 function App() {
   const dispatch = useAppDispatch();
   const { user, isAuthenticated, loading } = useAuth();
+  const call = useCall();
+  const incomingCall = useIncomingCall();
 
   useEffect(() => {
     // Attempt to fetch current user via cookie
@@ -37,7 +41,12 @@ function App() {
   return (
     <div className="text-center">
       {isAuthenticated && user ? (
-        <Chat onLogout={handleLogout} />
+        <>
+          <Chat onLogout={handleLogout} />
+          {/* Call Components */}
+          {(call.isInCall || call.callStatus === 'calling') && <VideoCall />}
+          {incomingCall && <IncomingCall />}
+        </>
       ) : (
         <Auth />
       )}

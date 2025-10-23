@@ -154,6 +154,41 @@ class SocketService {
     });
   }
 
+  // Call-related socket methods
+  initiateCall(callData) {
+    return this.emit('initiate_call', callData);
+  }
+
+  answerCall(callData) {
+    return this.emit('answer_call', callData);
+  }
+
+  rejectCall(callData) {
+    return this.emit('reject_call', callData);
+  }
+
+  endCall(callData) {
+    return this.emit('end_call', callData);
+  }
+
+  // WebRTC signaling methods
+  sendCallOffer(offerData) {
+    return this.emit('call_offer', offerData);
+  }
+
+  sendCallAnswer(answerData) {
+    return this.emit('call_answer', answerData);
+  }
+
+  sendIceCandidate(candidateData) {
+    return this.emit('ice_candidate', candidateData);
+  }
+
+  // Call status updates
+  updateCallStatus(statusData) {
+    return this.emit('call_status_update', statusData);
+  }
+
   // Convenience methods for common event listeners
   onReceiveMessage(callback) {
     this.on('receive_message', callback);
@@ -173,6 +208,39 @@ class SocketService {
 
   onRoomJoined(callback) {
     this.on('room_joined', callback);
+  }
+
+  // Call event listeners
+  onIncomingCall(callback) {
+    this.on('incoming_call', callback);
+  }
+
+  onCallAccepted(callback) {
+    this.on('call_accepted', callback);
+  }
+
+  onCallRejected(callback) {
+    this.on('call_rejected', callback);
+  }
+
+  onCallEnded(callback) {
+    this.on('call_ended', callback);
+  }
+
+  onCallOffer(callback) {
+    this.on('call_offer', callback);
+  }
+
+  onCallAnswer(callback) {
+    this.on('call_answer', callback);
+  }
+
+  onIceCandidate(callback) {
+    this.on('ice_candidate', callback);
+  }
+
+  onCallStatusUpdate(callback) {
+    this.on('call_status_update', callback);
   }
 
   // Get connection status
