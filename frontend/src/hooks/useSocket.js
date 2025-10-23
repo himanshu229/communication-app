@@ -139,7 +139,7 @@ export const useSocket = () => {
       // Add a small delay to ensure call status is updated before processing answer
       setTimeout(() => {
         window.dispatchEvent(new CustomEvent('webrtc-answer', { detail: answerData }));
-      }, 1000);
+      }, 100);
     });
 
     socketService.onIceCandidate((candidateData) => {
