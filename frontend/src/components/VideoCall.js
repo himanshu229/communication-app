@@ -21,7 +21,7 @@ import {
   setCallError,
   updateConnectionState 
 } from '../store/slices/callSlice';
-import WebRTCService, { forceStopAllMediaTracks } from '../services/webrtc';
+import WebRTCService, { forceStopAllMediaTracks, getGlobalWebRTCInstance, clearGlobalWebRTCInstance } from '../services/webrtc';
 import { socketService } from '../services/socket';
 
 const VideoCall = () => {
@@ -44,59 +44,134 @@ const VideoCall = () => {
 
   // Helper function to display remote stream
   const displayRemoteStream = (stream) => {
+    console.log('🎥 Displaying remote stream:', {
+      callType: call.callType,
+      streamId: stream.id,
+      videoTracks: stream.getVideoTracks().length,
+      audioTracks: stream.getAudioTracks().length,
+      hasRemoteVideoRef: !!remoteVideoRef.current,
+      hasRemoteAudioRef: !!remoteAudioRef.current
+    });
+
     if (call.callType === 'video' && remoteVideoRef.current) {
-      console.log('Displaying remote video stream');
+      console.log('🎥 Setting remote video stream');
       remoteVideoRef.current.srcObject = stream;
-      setTimeout(() => {
-        if (remoteVideoRef.current && remoteVideoRef.current.srcObject) {
-          remoteVideoRef.current.play().catch(error => {
-            console.log('Remote video autoplay prevented:', error);
+      
+      // Ensure video element is ready
+      const videoElement = remoteVideoRef.current;
+      
+      // Set up event listeners for better debugging
+      videoElement.onloadedmetadata = () => {
+        console.log('🎥 Remote video metadata loaded');
+      };
+      
+      videoElement.oncanplay = () => {
+        console.log('🎥 Remote video can play');
+      };
+      
+      videoElement.onplay = () => {
+        console.log('🎥 Remote video started playing');
+      };
+      
+      videoElement.onerror = (e) => {
+        console.error('🎥 Remote video error:', e);
+      };
+      
+      // Force play with better error handling
+      const playVideo = () => {
+        if (videoElement && videoElement.srcObject) {
+          videoElement.play().then(() => {
+            console.log('🎥 Remote video playback started successfully');
+          }).catch(error => {
+            console.log('🎥 Remote video autoplay prevented, trying muted:', error);
+            // Try muted playback
+            videoElement.muted = true;
+            videoElement.play().then(() => {
+              console.log('🎥 Remote video playing muted');
+              // Try to unmute after a short delay
+              setTimeout(() => {
+                videoElement.muted = false;
+                videoElement.play().catch(e => {
+                  console.log('🎥 Could not unmute remote video:', e);
+                });
+              }, 1000);
+            }).catch(e => {
+              console.error('🎥 Failed to play remote video even muted:', e);
+            });
           });
         }
-      }, 100);
+      };
+      
+      // Try to play immediately and after a delay
+      playVideo();
+      setTimeout(playVideo, 100);
+      setTimeout(playVideo, 500);
+      
     } else if (call.callType === 'voice') {
-      console.log('Setting up remote audio stream');
+      console.log('🎵 Setting up remote audio stream');
       if (!remoteAudioRef.current) {
         remoteAudioRef.current = new Audio();
         remoteAudioRef.current.volume = 1.0;
+        remoteAudioRef.current.autoplay = true;
       }
       remoteAudioRef.current.srcObject = stream;
-      remoteAudioRef.current.autoplay = true;
-      remoteAudioRef.current.play().catch(error => {
-        console.error('Error playing remote audio:', error);
+      
+      // Try to play audio
+      remoteAudioRef.current.play().then(() => {
+        console.log('🎵 Remote audio playing successfully');
+      }).catch(error => {
+        console.error('🎵 Error playing remote audio:', error);
+        // Try with user interaction
+        document.addEventListener('click', () => {
+          remoteAudioRef.current.play().catch(e => {
+            console.error('🎵 Still cannot play remote audio:', e);
+          });
+        }, { once: true });
       });
     }
   };
 
   // Helper function to setup WebRTC callbacks
   const setupWebRTCCallbacks = (webrtc) => {
-    console.log('Setting up WebRTC callbacks');
+    console.log('🔧 Setting up WebRTC callbacks');
     
+    // Enhanced remote stream handling
     webrtc.onRemoteStream((stream) => {
-      console.log('Remote stream received via callback:', stream);
-      displayRemoteStream(stream);
+      console.log('🎥 Remote stream received via WebRTC callback:', {
+        streamId: stream.id,
+        videoTracks: stream.getVideoTracks().length,
+        audioTracks: stream.getAudioTracks().length,
+        callType: call.callType
+      });
+      
+      // Ensure we have a valid stream
+      if (stream && stream.getTracks().length > 0) {
+        displayRemoteStream(stream);
+      } else {
+        console.warn('🎥 Received invalid remote stream');
+      }
     });
 
     webrtc.onError((error) => {
-      console.error('WebRTC error:', error);
+      console.error('❌ WebRTC error:', error);
       dispatch(setCallError(error.message));
     });
 
     webrtc.onConnect(() => {
-      console.log('WebRTC connection established');
+      console.log('✅ WebRTC connection established');
       dispatch(updateConnectionState('connected'));
     });
 
     webrtc.onClose(() => {
-      console.log('WebRTC connection closed');
+      console.log('🔌 WebRTC connection closed');
       handleEndCall();
     });
 
     webrtc.onSignal((signalData) => {
-      console.log('WebRTC signal generated:', signalData);
+      console.log('📡 WebRTC signal generated:', signalData);
       if (call.callType && remoteUser.id) {
         if (signalData.type === 'offer') {
-          console.log('Sending call offer');
+          console.log('📤 Sending call offer');
           socketService.sendCallOffer({
             to: remoteUser.id,
             from: call.localUserId,
@@ -104,7 +179,7 @@ const VideoCall = () => {
             callType: call.callType
           });
         } else if (signalData.type === 'answer') {
-          console.log('Sending call answer');
+          console.log('📤 Sending call answer');
           socketService.sendCallAnswer({
             to: remoteUser.id,
             from: call.localUserId,
@@ -115,28 +190,72 @@ const VideoCall = () => {
     });
   };
 
-  // Initialize WebRTC service and set up callbacks
+  // Listen for remote stream events from useCallManager
   useEffect(() => {
-    if (!webrtcRef.current) {
-      webrtcRef.current = new WebRTCService();
-    }
-    
-    // Set up callbacks immediately when WebRTC service is available
-    if (webrtcRef.current) {
-      setupWebRTCCallbacks(webrtcRef.current);
-    }
+    const handleRemoteStreamEvent = (event) => {
+      const { stream, source } = event.detail;
+      console.log('🎥 Remote stream event received from', source, ':', stream);
+      displayRemoteStream(stream);
+    };
+
+    const handleWebRTCAnswer = (event) => {
+      console.log('🎥 WebRTC answer event received in VideoCall:', event.detail);
+      // This is handled by useCallManager, but we can add additional logging here
+    };
+
+    const handleWebRTCOffer = (event) => {
+      console.log('🎥 WebRTC offer event received in VideoCall:', event.detail);
+      // This is handled by useCallManager, but we can add additional logging here
+    };
+
+    window.addEventListener('webrtc-remote-stream', handleRemoteStreamEvent);
+    window.addEventListener('webrtc-answer', handleWebRTCAnswer);
+    window.addEventListener('webrtc-offer', handleWebRTCOffer);
     
     return () => {
-      if (webrtcRef.current) {
-        webrtcRef.current.cleanup();
-        webrtcRef.current = null;
-      }
+      window.removeEventListener('webrtc-remote-stream', handleRemoteStreamEvent);
+      window.removeEventListener('webrtc-answer', handleWebRTCAnswer);
+      window.removeEventListener('webrtc-offer', handleWebRTCOffer);
     };
   }, []);
 
-  // Setup call when component mounts or call status changes
+  // Initialize WebRTC service once using singleton pattern
   useEffect(() => {
-    if (call.isInCall && call.callStatus === 'connected') {
+    if (!webrtcRef.current) {
+      webrtcRef.current = getGlobalWebRTCInstance();
+      console.log('WebRTC service initialized via singleton');
+    }
+    
+    return () => {
+      // Don't cleanup the global instance here - let it persist for the call
+      console.log('VideoCall unmounting - keeping WebRTC instance alive');
+    };
+  }, []); // Only run once on mount
+
+  // Setup callbacks when WebRTC is available and call is active
+  useEffect(() => {
+    const webrtc = webrtcRef.current;
+    if (webrtc && call.isInCall) {
+      console.log('🔧 Setting up WebRTC callbacks for call status:', call.callStatus);
+      setupWebRTCCallbacks(webrtc);
+    }
+  }, [call.isInCall, call.callStatus]); // Only when call starts or status changes
+
+  // Debug call status changes
+  useEffect(() => {
+    console.log('📞 Call status changed:', {
+      isInCall: call.isInCall,
+      callStatus: call.callStatus,
+      callType: call.callType,
+      remoteUserId: call.remoteUserId
+    });
+  }, [call.isInCall, call.callStatus, call.callType, call.remoteUserId]);
+
+  // Setup call when component mounts or call status changes to connected/calling
+  useEffect(() => {
+    if (!call.isInCall) return;
+    
+    if (call.callStatus === 'connected') {
       console.log('Setting up call - status connected');
       setupCall();
       if (!callStartTimeRef.current) {
@@ -144,13 +263,13 @@ const VideoCall = () => {
         // Play connection sound
         ringtoneService.playNotificationBeep();
       }
-    } else if (call.isInCall && call.callStatus === 'calling') {
+    } else if (call.callStatus === 'calling') {
       console.log('Setting up call - status calling (initiator)');
       setupCall();
     }
-  }, [call.isInCall, call.callStatus]);
+  }, [call.isInCall, call.callStatus]); // Only re-run when these specific values change
 
-  // Continuously check for streams and display them
+  // Continuously check for streams and display them (with reduced frequency)
   useEffect(() => {
     if (!call.isInCall || !webrtcRef.current) return;
 
@@ -161,17 +280,29 @@ const VideoCall = () => {
       // Check and display local stream (from WebRTC service only)
       if (webrtc.localStream && call.callType === 'video' && localVideoRef.current) {
         if (localVideoRef.current.srcObject !== webrtc.localStream) {
-          console.log('Setting local video stream from WebRTC');
+          console.log('🎥 Setting local video stream from WebRTC');
           localVideoRef.current.srcObject = webrtc.localStream;
+          
+          // Ensure local video plays
+          setTimeout(() => {
+            if (localVideoRef.current && localVideoRef.current.srcObject) {
+              localVideoRef.current.play().catch(error => {
+                console.log('🎥 Local video autoplay prevented:', error);
+              });
+            }
+          }, 100);
         }
       }
 
       // Check and display remote stream (from WebRTC service only)
-      if (webrtc.remoteStream && remoteVideoRef.current && !remoteVideoRef.current.srcObject) {
-        console.log('Setting remote video stream from WebRTC');
-        displayRemoteStream(webrtc.remoteStream);
+      if (webrtc.remoteStream && remoteVideoRef.current) {
+        const currentSrcObject = remoteVideoRef.current.srcObject;
+        if (!currentSrcObject || currentSrcObject.id !== webrtc.remoteStream.id) {
+          console.log('🎥 Setting remote video stream from WebRTC service');
+          displayRemoteStream(webrtc.remoteStream);
+        }
       }
-    }, 500); // Check every 500ms
+    }, 1000); // Check every second
 
     return () => clearInterval(interval);
   }, [call.isInCall, call.callType]);
@@ -220,11 +351,23 @@ const VideoCall = () => {
 
       console.log('Setting up call with status:', call.callStatus, 'type:', call.callType);
 
+      // Global flag to prevent simultaneous setup calls
+      if (window.webrtcSetupInProgress) {
+        console.log('WebRTC setup already in progress, skipping duplicate');
+        return;
+      }
+
       // If this is a receiver (connected status), WebRTC should already be initialized by useCallManager
       if (call.callStatus === 'connected') {
         console.log('Call connected - setting up video display for existing WebRTC connection');
         
-        // Callbacks are already set up in useEffect, just set up video display
+        // Check if already set up for this call to prevent re-setup
+        if (webrtc.isSetupForCall) {
+          console.log('WebRTC already set up for this call, skipping duplicate setup');
+          return;
+        }
+        
+        webrtc.isSetupForCall = true;
 
         // Helper function to setup local video for receiver
         const setupLocalVideoForReceiver = () => {
@@ -232,12 +375,22 @@ const VideoCall = () => {
           const localStream = webrtc.localStream;
           
           if (localStream && call.callType === 'video' && localVideoRef.current) {
-            console.log('Setting up local video display for receiver');
+            console.log('🎥 Setting up local video display for receiver');
             localVideoRef.current.srcObject = localStream;
+            
+            // Set up event listeners for local video
+            const localVideoElement = localVideoRef.current;
+            localVideoElement.onloadedmetadata = () => {
+              console.log('🎥 Local video metadata loaded for receiver');
+            };
+            localVideoElement.onplay = () => {
+              console.log('🎥 Local video started playing for receiver');
+            };
+            
             setTimeout(() => {
               if (localVideoRef.current && localVideoRef.current.srcObject) {
                 localVideoRef.current.play().catch(error => {
-                  console.log('Local video autoplay prevented:', error);
+                  console.log('🎥 Local video autoplay prevented for receiver:', error);
                 });
               }
             }, 100);
@@ -266,8 +419,10 @@ const VideoCall = () => {
         // If remote stream already exists, display it
         const existingRemoteStream = webrtc.remoteStream;
         if (existingRemoteStream) {
-          console.log('Remote stream already available, displaying');
+          console.log('Remote stream already available when setting up receiver, displaying');
           displayRemoteStream(existingRemoteStream);
+        } else {
+          console.log('No existing remote stream found for receiver');
         }
 
         return;
@@ -279,11 +434,19 @@ const VideoCall = () => {
         
         // Check if peer is already created to avoid duplicate initialization
         if (webrtc.peer) {
-          console.log('WebRTC peer already exists for caller');
+          console.log('WebRTC peer already exists for caller - skipping initialization');
           return;
         }
 
-        // Callbacks are already set up in useEffect
+        // Check if already initializing to prevent race conditions
+        if (webrtc.isInitializing) {
+          console.log('WebRTC already initializing - skipping duplicate');
+          return;
+        }
+
+        // Set global flag
+        window.webrtcSetupInProgress = true;
+        webrtc.isInitializing = true;
 
         // Initialize local media stream for caller
         const constraints = {
@@ -295,11 +458,22 @@ const VideoCall = () => {
         const localStream = await webrtc.initializeLocalStream(constraints);
         
         if (localVideoRef.current && call.callType === 'video') {
+          console.log('🎥 Setting up local video for caller');
           localVideoRef.current.srcObject = localStream;
+          
+          // Set up event listeners for local video
+          const localVideoElement = localVideoRef.current;
+          localVideoElement.onloadedmetadata = () => {
+            console.log('🎥 Local video metadata loaded for caller');
+          };
+          localVideoElement.onplay = () => {
+            console.log('🎥 Local video started playing for caller');
+          };
+          
           setTimeout(() => {
             if (localVideoRef.current && localVideoRef.current.srcObject) {
               localVideoRef.current.play().catch(error => {
-                console.log('Local video autoplay prevented:', error);
+                console.log('🎥 Local video autoplay prevented for caller:', error);
               });
             }
           }, 100);
@@ -307,10 +481,16 @@ const VideoCall = () => {
 
         console.log('Creating peer as initiator');
         webrtc.createPeerAsInitiator(localStream);
+        webrtc.isInitializing = false;
+        window.webrtcSetupInProgress = false;
       }
 
     } catch (error) {
       console.error('Error setting up call:', error);
+      if (webrtcRef.current) {
+        webrtcRef.current.isInitializing = false;
+      }
+      window.webrtcSetupInProgress = false;
       dispatch(setCallError('Failed to access camera/microphone'));
     }
   };
@@ -369,14 +549,18 @@ const VideoCall = () => {
       webrtcRef.current.cleanup();
     }
     
-    // STEP 5: Clean up audio element
+    // STEP 5: Clear the global WebRTC instance
+    clearGlobalWebRTCInstance();
+    webrtcRef.current = null;
+    
+    // STEP 6: Clean up audio element
     if (remoteAudioRef.current) {
       remoteAudioRef.current.pause();
       remoteAudioRef.current.srcObject = null;
       remoteAudioRef.current = null;
     }
     
-    // STEP 6: Clear video element sources
+    // STEP 7: Clear video element sources
     if (localVideoRef.current) {
       localVideoRef.current.srcObject = null;
     }
@@ -385,7 +569,7 @@ const VideoCall = () => {
       remoteVideoRef.current.srcObject = null;
     }
     
-    // STEP 7: Final verification - check if any tracks are still active
+    // STEP 8: Final verification - check if any tracks are still active
     setTimeout(() => {
       if (window.globalMediaTracks && window.globalMediaTracks.length > 0) {
         console.log('⚠️  Still have active global tracks, force stopping:', window.globalMediaTracks.length);
@@ -400,7 +584,7 @@ const VideoCall = () => {
       console.log('✅ Camera cleanup verification complete');
     }, 1000);
     
-    // STEP 8: End call through manager (this will notify remote user)
+    // STEP 9: End call through manager (this will notify remote user)
     endCallFromManager();
     
     console.log('🏁 Call cleanup sequence completed');
@@ -453,93 +637,149 @@ const VideoCall = () => {
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
+  // Debug function to check stream status
+  const debugStreamStatus = () => {
+    if (!webrtcRef.current) {
+      console.log('🔍 Debug: No WebRTC instance');
+      return;
+    }
+
+    const webrtc = webrtcRef.current;
+    const localStream = webrtc.localStream;
+    const remoteStream = webrtc.remoteStream;
+    
+    console.log('🔍 Stream Debug Status:', {
+      callStatus: call.callStatus,
+      callType: call.callType,
+      localStream: localStream ? {
+        id: localStream.id,
+        videoTracks: localStream.getVideoTracks().length,
+        audioTracks: localStream.getAudioTracks().length,
+        active: localStream.active
+      } : null,
+      remoteStream: remoteStream ? {
+        id: remoteStream.id,
+        videoTracks: remoteStream.getVideoTracks().length,
+        audioTracks: remoteStream.getAudioTracks().length,
+        active: remoteStream.active
+      } : null,
+      localVideoElement: localVideoRef.current ? {
+        hasSrcObject: !!localVideoRef.current.srcObject,
+        srcObjectId: localVideoRef.current.srcObject?.id,
+        paused: localVideoRef.current.paused,
+        readyState: localVideoRef.current.readyState
+      } : null,
+      remoteVideoElement: remoteVideoRef.current ? {
+        hasSrcObject: !!remoteVideoRef.current.srcObject,
+        srcObjectId: remoteVideoRef.current.srcObject?.id,
+        paused: remoteVideoRef.current.paused,
+        readyState: remoteVideoRef.current.readyState
+      } : null,
+      connectionState: webrtc.getConnectionState(),
+      remoteStreamStatus: webrtc.getRemoteStreamStatus()
+    });
+  };
+
+  // Debug stream status periodically
+  useEffect(() => {
+    if (!call.isInCall) return;
+    
+    const debugInterval = setInterval(() => {
+      debugStreamStatus();
+    }, 5000); // Debug every 5 seconds
+    
+    return () => clearInterval(debugInterval);
+  }, [call.isInCall]);
+
   // Cleanup effect when component unmounts or call ends
   useEffect(() => {
     return () => {
       console.log('🧹 VideoCall component cleanup');
+      
+      // Clear global flags
+      window.webrtcSetupInProgress = false;
       
       // Clean up timeout
       if (controlsTimeoutRef.current) {
         clearTimeout(controlsTimeoutRef.current);
       }
       
-      // Force stop all media tracks using global utility
-      forceStopAllMediaTracks();
-      
-      // Stop all media tracks
-      const stopAllTracks = () => {
-        // From WebRTC service
-        if (webrtcRef.current && webrtcRef.current.localStream) {
-          webrtcRef.current.localStream.getTracks().forEach(track => {
-            if (track.readyState !== 'ended') {
-              console.log('🎥 Component cleanup - stopping WebRTC track:', track.kind, track.id, 'readyState:', track.readyState);
-              track.stop();
-            }
-          });
+      // Only force cleanup if call is not active
+      if (!call.isInCall) {
+        // Force stop all media tracks using global utility
+        forceStopAllMediaTracks();
+        
+        // Stop all media tracks
+        const stopAllTracks = () => {
+          // From WebRTC service
+          if (webrtcRef.current && webrtcRef.current.localStream) {
+            webrtcRef.current.localStream.getTracks().forEach(track => {
+              if (track.readyState !== 'ended') {
+                console.log('🎥 Component cleanup - stopping WebRTC track:', track.kind, track.id, 'readyState:', track.readyState);
+                track.stop();
+              }
+            });
+          }
+          
+          // From video elements
+          if (localVideoRef.current && localVideoRef.current.srcObject) {
+            const tracks = localVideoRef.current.srcObject.getTracks();
+            tracks.forEach(track => {
+              if (track.readyState !== 'ended') {
+                console.log('🎥 Component cleanup - stopping local video track:', track.kind, track.id, 'readyState:', track.readyState);
+                track.stop();
+              }
+            });
+          }
+          
+          if (remoteVideoRef.current && remoteVideoRef.current.srcObject) {
+            const tracks = remoteVideoRef.current.srcObject.getTracks();
+            tracks.forEach(track => {
+              if (track.readyState !== 'ended') {
+                console.log('🎥 Component cleanup - stopping remote video track:', track.kind, track.id, 'readyState:', track.readyState);
+                track.stop();
+              }
+            });
+          }
+        };
+        
+        stopAllTracks();
+        
+        // Clean up video elements
+        if (localVideoRef.current) {
+          localVideoRef.current.srcObject = null;
         }
         
-        // From video elements
-        if (localVideoRef.current && localVideoRef.current.srcObject) {
-          const tracks = localVideoRef.current.srcObject.getTracks();
-          tracks.forEach(track => {
-            if (track.readyState !== 'ended') {
-              console.log('🎥 Component cleanup - stopping local video track:', track.kind, track.id, 'readyState:', track.readyState);
-              track.stop();
-            }
-          });
+        if (remoteVideoRef.current) {
+          remoteVideoRef.current.srcObject = null;
         }
         
-        if (remoteVideoRef.current && remoteVideoRef.current.srcObject) {
-          const tracks = remoteVideoRef.current.srcObject.getTracks();
-          tracks.forEach(track => {
-            if (track.readyState !== 'ended') {
-              console.log('🎥 Component cleanup - stopping remote video track:', track.kind, track.id, 'readyState:', track.readyState);
-              track.stop();
-            }
-          });
+        // Clean up audio
+        if (remoteAudioRef.current) {
+          remoteAudioRef.current.pause();
+          remoteAudioRef.current.srcObject = null;
         }
-      };
-      
-      stopAllTracks();
-      
-      // Clean up video elements
-      if (localVideoRef.current) {
-        localVideoRef.current.srcObject = null;
+        
+        // Final global track cleanup verification
+        setTimeout(() => {
+          if (window.globalMediaTracks && window.globalMediaTracks.length > 0) {
+            console.log('🚨 Component cleanup - still have tracks, force stopping:', window.globalMediaTracks.length);
+            window.globalMediaTracks.forEach(track => {
+              if (track.readyState !== 'ended') {
+                console.log('🎥 Final component cleanup - stopping track:', track.kind, track.id);
+                track.stop();
+              }
+            });
+            window.globalMediaTracks = [];
+          }
+          console.log('✅ Component cleanup verification complete');
+        }, 500);
       }
-      
-      if (remoteVideoRef.current) {
-        remoteVideoRef.current.srcObject = null;
-      }
-      
-      // Clean up audio
-      if (remoteAudioRef.current) {
-        remoteAudioRef.current.pause();
-        remoteAudioRef.current.srcObject = null;
-      }
-      
-      // Clean up WebRTC
-      if (webrtcRef.current) {
-        webrtcRef.current.cleanup();
-      }
-      
-      // Final global track cleanup verification
-      setTimeout(() => {
-        if (window.globalMediaTracks && window.globalMediaTracks.length > 0) {
-          console.log('🚨 Component cleanup - still have tracks, force stopping:', window.globalMediaTracks.length);
-          window.globalMediaTracks.forEach(track => {
-            if (track.readyState !== 'ended') {
-              console.log('🎥 Final component cleanup - stopping track:', track.kind, track.id);
-              track.stop();
-            }
-          });
-          window.globalMediaTracks = [];
-        }
-        console.log('✅ Component cleanup verification complete');
-      }, 500);
     };
-  }, []);
+  }, [call.isInCall]);
 
-  if (!call.isInCall && call.callStatus !== 'calling') {
+  // Only show component when actually in a call or about to be in a call
+  if (!call.isInCall || (call.callStatus !== 'calling' && call.callStatus !== 'connected')) {
     return null;
   }
 
@@ -583,14 +823,30 @@ const VideoCall = () => {
             playsInline
             muted={false}
             className="w-full h-full object-cover bg-gray-900"
-            onLoadedMetadata={() => console.log('Remote video metadata loaded')}
+            onLoadedMetadata={() => {
+              console.log('Remote video metadata loaded');
+              // Try to play again when metadata is loaded
+              if (remoteVideoRef.current) {
+                remoteVideoRef.current.play().catch(e => {
+                  console.log('Remote video play failed after metadata load:', e);
+                });
+              }
+            }}
             onPlay={() => console.log('Remote video started playing')}
             onError={(e) => console.error('Remote video error:', e)}
+            onCanPlay={() => {
+              console.log('Remote video can play');
+              if (remoteVideoRef.current) {
+                remoteVideoRef.current.play().catch(e => {
+                  console.log('Remote video play failed on canplay:', e);
+                });
+              }
+            }}
           />
         )}
         
         {/* Remote Video Placeholder */}
-        {call.callType === 'video' && !remoteVideoRef.current?.srcObject && (
+        {call.callType === 'video' && (!remoteVideoRef.current?.srcObject && !webrtcRef.current?.remoteStream) && (
           <div className="absolute inset-0 bg-gray-900 flex items-center justify-center">
             <div className="text-center text-white">
               <div className="w-32 h-32 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-4">

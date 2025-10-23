@@ -1,11 +1,34 @@
 import SimplePeer from 'simple-peer';
 
+// Global WebRTC instance manager to prevent multiple instances
+let globalWebRTCInstance = null;
+
+export const getGlobalWebRTCInstance = () => {
+  if (!globalWebRTCInstance) {
+    console.log('Creating new global WebRTC instance');
+    globalWebRTCInstance = new WebRTCService();
+  } else {
+    console.log('Reusing existing global WebRTC instance');
+  }
+  return globalWebRTCInstance;
+};
+
+export const clearGlobalWebRTCInstance = () => {
+  if (globalWebRTCInstance) {
+    console.log('Clearing global WebRTC instance');
+    globalWebRTCInstance.cleanup();
+    globalWebRTCInstance = null;
+  }
+};
+
 class WebRTCService {
   constructor() {
     this.peer = null;
     this.localStream = null;
     this.remoteStream = null;
     this.isInitiator = false;
+    this.isInitializing = false; // Guard against multiple initializations
+    this.isSetupForCall = false; // Guard against multiple call setups
     this.onStreamCallback = null;
     this.onErrorCallback = null;
     this.onConnectCallback = null;
@@ -20,6 +43,23 @@ class WebRTCService {
   // Initialize local media stream
   async initializeLocalStream(constraints = { video: true, audio: true }) {
     try {
+      // If we already have a stream with the same constraints, reuse it
+      if (this.localStream) {
+        const hasVideo = this.localStream.getVideoTracks().length > 0;
+        const hasAudio = this.localStream.getAudioTracks().length > 0;
+        const needsVideo = constraints.video;
+        const needsAudio = constraints.audio;
+        
+        if ((needsVideo === hasVideo) && (needsAudio === hasAudio)) {
+          console.log('Reusing existing local stream with matching constraints');
+          return this.localStream;
+        } else {
+          console.log('Constraints changed, getting new stream');
+          // Clean up old stream before getting new one
+          this.stopLocalStream();
+        }
+      }
+
       console.log('Requesting media with constraints:', constraints);
       
       // Ensure audio constraints are properly set for voice calls
@@ -38,6 +78,9 @@ class WebRTCService {
       if (!window.globalMediaTracks) {
         window.globalMediaTracks = [];
       }
+      
+      // Clean up old tracks from our tracking arrays
+      this.allTracks = [];
       
       // Track all created tracks for comprehensive cleanup
       this.localStream.getTracks().forEach(track => {
@@ -66,8 +109,27 @@ class WebRTCService {
     }
   }
 
+  // Stop local stream tracks
+  stopLocalStream() {
+    if (this.localStream) {
+      console.log('Stopping existing local stream tracks');
+      this.localStream.getTracks().forEach(track => {
+        if (track.readyState !== 'ended') {
+          console.log('Stopping track:', track.kind, track.id);
+          track.stop();
+        }
+      });
+      this.localStream = null;
+    }
+  }
+
   // Create peer connection as initiator (caller)
   createPeerAsInitiator(stream) {
+    if (this.peer) {
+      console.log('Peer already exists, destroying old one before creating new');
+      this.peer.destroy();
+    }
+    
     this.isInitiator = true;
     this.peer = new SimplePeer({
       initiator: true,
@@ -90,6 +152,11 @@ class WebRTCService {
 
   // Create peer connection as receiver (callee)
   createPeerAsReceiver(stream) {
+    if (this.peer) {
+      console.log('Peer already exists, destroying old one before creating new');
+      this.peer.destroy();
+    }
+    
     this.isInitiator = false;
     this.peer = new SimplePeer({
       initiator: false,
@@ -124,13 +191,39 @@ class WebRTCService {
 
     // Handle incoming stream
     this.peer.on('stream', (stream) => {
-      console.log('Remote stream received:', {
+      console.log('🎥 Remote stream received in WebRTC service:', {
         audioTracks: stream.getAudioTracks().length,
-        videoTracks: stream.getVideoTracks().length
+        videoTracks: stream.getVideoTracks().length,
+        id: stream.id,
+        active: stream.active
       });
+      
+      // Store the remote stream
       this.remoteStream = stream;
+      
+      // Ensure tracks are enabled and log their status
+      stream.getAudioTracks().forEach((track, index) => {
+        console.log(`🎵 Remote audio track ${index}:`, {
+          enabled: track.enabled,
+          readyState: track.readyState,
+          muted: track.muted
+        });
+      });
+      
+      stream.getVideoTracks().forEach((track, index) => {
+        console.log(`🎥 Remote video track ${index}:`, {
+          enabled: track.enabled,
+          readyState: track.readyState,
+          muted: track.muted
+        });
+      });
+      
+      // Notify callback if available
       if (this.onStreamCallback) {
+        console.log('🎥 Calling onStreamCallback with remote stream');
         this.onStreamCallback(stream);
+      } else {
+        console.warn('🎥 No onStreamCallback set for remote stream');
       }
     });
 
@@ -262,9 +355,38 @@ class WebRTCService {
     return 'new';
   }
 
+  // Get remote stream status
+  getRemoteStreamStatus() {
+    if (!this.remoteStream) {
+      return { hasStream: false, reason: 'No remote stream' };
+    }
+    
+    const videoTracks = this.remoteStream.getVideoTracks();
+    const audioTracks = this.remoteStream.getAudioTracks();
+    
+    return {
+      hasStream: true,
+      videoTracks: videoTracks.length,
+      audioTracks: audioTracks.length,
+      videoEnabled: videoTracks.some(track => track.enabled),
+      audioEnabled: audioTracks.some(track => track.enabled),
+      streamId: this.remoteStream.id,
+      active: this.remoteStream.active
+    };
+  }
+
   // Clean up and close connection
   cleanup() {
     console.log('WebRTC cleanup started - stopping all media tracks');
+    
+    // Reset initialization flags
+    this.isInitializing = false;
+    this.isSetupForCall = false;
+    
+    // Clear global setup flag
+    if (typeof window !== 'undefined') {
+      window.webrtcSetupInProgress = false;
+    }
     
     // Stop ALL tracked media tracks first
     console.log('Stopping', this.allTracks.length, 'tracked media tracks');
@@ -321,6 +443,11 @@ class WebRTCService {
   // Set event callbacks
   onRemoteStream(callback) {
     this.onStreamCallback = callback;
+    // If peer already exists and has received a stream, call the callback immediately
+    if (this.remoteStream) {
+      console.log('WebRTC: Remote stream already exists, calling callback immediately');
+      callback(this.remoteStream);
+    }
   }
 
   onError(callback) {

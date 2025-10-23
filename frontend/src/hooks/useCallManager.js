@@ -9,7 +9,7 @@ import {
   updateConnectionState,
   setCallError
 } from '../store/slices/callSlice';
-import WebRTCService from '../services/webrtc';
+import WebRTCService, { getGlobalWebRTCInstance, clearGlobalWebRTCInstance } from '../services/webrtc';
 
 export const useCallManager = () => {
   const dispatch = useAppDispatch();
@@ -24,10 +24,10 @@ export const useCallManager = () => {
   
   const webrtcRef = useRef(null);
 
-  // Initialize WebRTC service
+  // Initialize WebRTC service using singleton
   useEffect(() => {
     if (!webrtcRef.current) {
-      webrtcRef.current = new WebRTCService();
+      webrtcRef.current = getGlobalWebRTCInstance();
     }
 
     // Setup WebRTC event listeners
@@ -36,23 +36,56 @@ export const useCallManager = () => {
     const handleOffer = (event) => {
       const { detail: offerData } = event;
       const webrtc = webrtcRef.current;
+      console.log('🎥 Processing WebRTC offer:', {
+        hasWebRTC: !!webrtc,
+        hasPeer: !!(webrtc && webrtc.peer),
+        callStatus: call.callStatus,
+        offerData: offerData
+      });
+      
       if (webrtc && webrtc.peer && call.callStatus === 'connected') {
-        console.log('Processing WebRTC offer');
+        console.log('✅ Processing WebRTC offer');
         webrtc.processSignal(offerData.signal);
       } else {
-        console.log('Cannot process offer - peer not ready or wrong call status');
+        console.log('❌ Cannot process offer:', {
+          hasWebRTC: !!webrtc,
+          hasPeer: !!(webrtc && webrtc.peer),
+          callStatus: call.callStatus
+        });
       }
     };
 
     const handleAnswer = (event) => {
       const { detail: answerData } = event;
       const webrtc = webrtcRef.current;
-      if (webrtc && webrtc.peer && call.callStatus === 'calling') {
-        console.log('Processing WebRTC answer');
-        webrtc.processSignal(answerData.signal);
-        dispatch(updateCallStatus('connected'));
+      console.log('🎥 Processing WebRTC answer:', {
+        hasWebRTC: !!webrtc,
+        hasPeer: !!(webrtc && webrtc.peer),
+        callStatus: call.callStatus,
+        answerData: answerData
+      });
+      
+      if (webrtc && webrtc.peer) {
+        if (call.callStatus === 'calling') {
+          console.log('✅ Processing WebRTC answer - updating call status to connected');
+          webrtc.processSignal(answerData.signal);
+          dispatch(updateCallStatus('connected'));
+        } else if (call.callStatus === 'connected') {
+          console.log('✅ Processing WebRTC answer - call already connected, just processing signal');
+          webrtc.processSignal(answerData.signal);
+        } else {
+          console.log('⚠️ Processing WebRTC answer with unexpected call status, processing anyway');
+          webrtc.processSignal(answerData.signal);
+          if (call.callStatus !== 'connected') {
+            dispatch(updateCallStatus('connected'));
+          }
+        }
       } else {
-        console.log('Cannot process answer - peer not ready or wrong call status');
+        console.log('❌ Cannot process answer:', {
+          hasWebRTC: !!webrtc,
+          hasPeer: !!(webrtc && webrtc.peer),
+          callStatus: call.callStatus
+        });
       }
     };
 
@@ -77,9 +110,7 @@ export const useCallManager = () => {
       window.removeEventListener('webrtc-answer', handleAnswer);
       window.removeEventListener('webrtc-ice-candidate', handleIceCandidate);
       
-      if (webrtc) {
-        webrtc.cleanup();
-      }
+      // Don't cleanup the singleton here - it will be cleaned up when call ends
     };
   }, [call.callStatus]);
 
@@ -89,12 +120,26 @@ export const useCallManager = () => {
     try {
       console.log('Accepting call from:', call.incomingCall.callerId);
       
+      // Check if WebRTC is already initialized to prevent duplicate setup
+      const webrtc = webrtcRef.current;
+      if (webrtc && webrtc.peer) {
+        console.log('WebRTC already initialized, skipping duplicate setup');
+        // Just accept the call in Redux and notify socket
+        dispatch(acceptCall());
+        socketAnswerCall({
+          to: call.incomingCall.callerId,
+          from: user.id
+        });
+        return;
+      }
+      
       // First accept the call in Redux to update state
       dispatch(acceptCall());
 
       // Initialize WebRTC for the callee immediately after accepting
-      const webrtc = webrtcRef.current;
-      if (webrtc) {
+      if (webrtc && !webrtc.isInitializing) {
+        webrtc.isInitializing = true;
+        
         const constraints = {
           video: call.incomingCall.callType === 'video',
           audio: true
@@ -123,11 +168,29 @@ export const useCallManager = () => {
           dispatch(updateConnectionState('connected'));
         });
         
-        // Note: onRemoteStream callback will be set by VideoCall component
-        // to avoid callback conflicts
+        // Set onRemoteStream callback immediately when accepting call
+        // This ensures we don't miss the remote stream
+        webrtc.onRemoteStream((stream) => {
+          console.log('🎥 Remote stream received in useCallManager:', {
+            streamId: stream.id,
+            videoTracks: stream.getVideoTracks().length,
+            audioTracks: stream.getAudioTracks().length
+          });
+          
+          // Ensure we have a valid stream before dispatching
+          if (stream && stream.getTracks().length > 0) {
+            // Dispatch event for VideoCall component to handle
+            window.dispatchEvent(new CustomEvent('webrtc-remote-stream', { 
+              detail: { stream, source: 'useCallManager' }
+            }));
+          } else {
+            console.warn('🎥 Received invalid remote stream in useCallManager');
+          }
+        });
         
         // Create peer as receiver AFTER setting up callbacks
         webrtc.createPeerAsReceiver(localStream);
+        webrtc.isInitializing = false;
       }
 
       // Notify the caller via socket that call is accepted
@@ -139,6 +202,9 @@ export const useCallManager = () => {
       console.log('Call accepted, WebRTC initialized, and socket notified');
     } catch (error) {
       console.error('Error accepting call:', error);
+      if (webrtcRef.current) {
+        webrtcRef.current.isInitializing = false;
+      }
       dispatch(setCallError('Failed to accept call'));
     }
   };
@@ -181,6 +247,10 @@ export const useCallManager = () => {
       console.log('Cleaning up WebRTC in useCallManager');
       webrtcRef.current.cleanup();
     }
+
+    // Clear the global singleton
+    clearGlobalWebRTCInstance();
+    webrtcRef.current = null;
 
     // Notify remote user if we have their ID
     if (targetUserId) {

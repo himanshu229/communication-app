@@ -136,8 +136,10 @@ export const useSocket = () => {
 
     socketService.onCallAnswer((answerData) => {
       console.log('WebRTC answer received:', answerData);
-      // This will be handled by the WebRTC service in VideoCall component
-      window.dispatchEvent(new CustomEvent('webrtc-answer', { detail: answerData }));
+      // Add a small delay to ensure call status is updated before processing answer
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('webrtc-answer', { detail: answerData }));
+      }, 1000);
     });
 
     socketService.onIceCandidate((candidateData) => {
