@@ -47,7 +47,7 @@ const Chat = ({ onLogout }) => {
     return () => {
       disconnect();
     };
-  }, [connect, disconnect, dispatch, user?.id]);
+  }, [user?.id]);
 
   // Detect mobile viewport (simple matchMedia listener)
   useEffect(() => {
@@ -181,7 +181,11 @@ const Chat = ({ onLogout }) => {
 
   const handleInitiateCall = (callType) => {
     if (!selectedUser || !currentRoom || !user?.id) {
-      console.error('Cannot initiate call: missing required data');
+      console.error('Cannot initiate call: missing required data', {
+        selectedUser: !!selectedUser,
+        currentRoom: !!currentRoom,
+        userId: !!user?.id
+      });
       return;
     }
 
@@ -202,6 +206,8 @@ const Chat = ({ onLogout }) => {
         callType,
         roomId: currentRoom.id
       });
+    } else {
+      console.error('Socket initiate call method not available');
     }
   };
 

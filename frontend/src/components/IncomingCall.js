@@ -2,12 +2,12 @@ import React, { useEffect, useState } from 'react';
 import { Phone, PhoneOff, Video, Volume2 } from 'lucide-react';
 import { useIncomingCall } from '../hooks/redux';
 import { useCallManager } from '../hooks/useCallManager';
+import { ringtoneService } from '../services/ringtone';
 
 const IncomingCall = () => {
   const incomingCall = useIncomingCall();
   const { handleAcceptCall, handleRejectCall } = useCallManager();
   const [isVisible, setIsVisible] = useState(false);
-  const [ringTone, setRingTone] = useState(null);
 
   // Show/hide modal based on incoming call
   useEffect(() => {
@@ -24,36 +24,28 @@ const IncomingCall = () => {
     };
   }, [incomingCall]);
 
-  const startRingtone = () => {
-    // Create audio context for ringtone (you can replace with actual audio file)
+  const startRingtone = async () => {
     try {
-      const audio = new Audio();
-      // You can add a ringtone file here: audio.src = '/sounds/ringtone.mp3';
-      audio.loop = true;
-      audio.volume = 0.5;
-      // audio.play(); // Uncomment when you have an audio file
-      setRingTone(audio);
+      await ringtoneService.startRingtone();
     } catch (error) {
       console.log('Could not play ringtone:', error);
     }
   };
 
   const stopRingtone = () => {
-    if (ringTone) {
-      ringTone.pause();
-      ringTone.currentTime = 0;
-      setRingTone(null);
-    }
+    ringtoneService.stopRingtone();
   };
 
   const handleAccept = () => {
-    handleAcceptCall();
     stopRingtone();
+    ringtoneService.playNotificationBeep();
+    handleAcceptCall();
   };
 
   const handleReject = () => {
-    handleRejectCall();
     stopRingtone();
+    ringtoneService.playCallEndSound();
+    handleRejectCall();
   };
 
   if (!incomingCall || !isVisible) {

@@ -13,7 +13,7 @@ import {
 import { 
   receiveIncomingCall,
   updateCallStatus,
-  endCall
+  endCall as endCallAction
 } from '../store/slices/callSlice';
 import { decryptMessage } from '../utils/encryption';
 
@@ -114,18 +114,18 @@ export const useSocket = () => {
     });
 
     socketService.onCallAccepted((callData) => {
-      console.log('Call accepted:', callData);
+      console.log('Call accepted by remote user:', callData);
       dispatch(updateCallStatus('connected'));
     });
 
     socketService.onCallRejected((callData) => {
-      console.log('Call rejected:', callData);
-      dispatch(endCall());
+      console.log('Call rejected by remote user:', callData);
+      dispatch(endCallAction());
     });
 
     socketService.onCallEnded((callData) => {
-      console.log('Call ended:', callData);
-      dispatch(endCall());
+      console.log('Call ended by remote user:', callData);
+      dispatch(endCallAction());
     });
 
     socketService.onCallOffer((offerData) => {
@@ -153,7 +153,7 @@ export const useSocket = () => {
 
   // Intentionally excluding currentRoom from deps; we use ref to avoid stale closure without re-registering listeners per room change
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dispatch, userId]);
+  }, [userId]);
 
   // Initialize socket connection
   const connect = useCallback(() => {
@@ -170,7 +170,7 @@ export const useSocket = () => {
     }
     
     return socket;
-  }, [userId, setupSocketListeners]);
+  }, [userId]);
 
   // Disconnect socket
   const disconnect = useCallback(() => {

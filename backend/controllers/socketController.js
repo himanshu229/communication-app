@@ -88,6 +88,11 @@ class SocketController {
 
     // Call-related handlers
     socket.on('initiate_call', (data) => {
+      if (!data || !data.from || !data.to) {
+        console.log('Invalid initiate_call data received:', data);
+        return;
+      }
+      
       console.log(`Call initiated from ${data.from} to ${data.to}:`, data);
       const targetUser = this.userController.getUserById(data.to);
       
@@ -107,6 +112,11 @@ class SocketController {
     });
 
     socket.on('answer_call', (data) => {
+      if (!data || !data.from || !data.to) {
+        console.log('Invalid answer_call data received:', data);
+        return;
+      }
+      
       console.log(`Call answered by ${data.from} to ${data.to}:`, data);
       const targetUser = this.userController.getUserById(data.to);
       
@@ -118,6 +128,11 @@ class SocketController {
     });
 
     socket.on('reject_call', (data) => {
+      if (!data || !data.from || !data.to) {
+        console.log('Invalid reject_call data received:', data);
+        return;
+      }
+      
       console.log(`Call rejected by ${data.from} to ${data.to}:`, data);
       const targetUser = this.userController.getUserById(data.to);
       
@@ -129,6 +144,11 @@ class SocketController {
     });
 
     socket.on('end_call', (data) => {
+      if (!data || !data.from || !data.to) {
+        console.log('Invalid end_call data received:', data);
+        return;
+      }
+      
       console.log(`Call ended by ${data.from} to ${data.to}:`, data);
       const targetUser = this.userController.getUserById(data.to);
       
@@ -141,6 +161,11 @@ class SocketController {
 
     // WebRTC signaling handlers
     socket.on('call_offer', (data) => {
+      if (!data || !data.from || !data.to) {
+        console.log('Invalid call_offer data received:', data);
+        return;
+      }
+      
       console.log(`WebRTC offer from ${data.from} to ${data.to}`);
       const targetUser = this.userController.getUserById(data.to);
       
@@ -154,6 +179,11 @@ class SocketController {
     });
 
     socket.on('call_answer', (data) => {
+      if (!data || !data.from || !data.to) {
+        console.log('Invalid call_answer data received:', data);
+        return;
+      }
+      
       console.log(`WebRTC answer from ${data.from} to ${data.to}`);
       const targetUser = this.userController.getUserById(data.to);
       
@@ -166,6 +196,11 @@ class SocketController {
     });
 
     socket.on('ice_candidate', (data) => {
+      if (!data || !data.from || !data.to) {
+        console.log('Invalid ice_candidate data received:', data);
+        return;
+      }
+      
       console.log(`ICE candidate from ${data.from} to ${data.to}`);
       const targetUser = this.userController.getUserById(data.to);
       

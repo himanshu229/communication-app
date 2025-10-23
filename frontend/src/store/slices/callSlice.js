@@ -20,8 +20,6 @@ const initialState = {
   isSpeakerEnabled: false,
   
   // WebRTC connection state
-  localStream: null,
-  remoteStream: null,
   connectionState: 'new', // 'new' | 'connecting' | 'connected' | 'disconnected' | 'failed'
   
   // Error handling
@@ -67,15 +65,27 @@ const callSlice = createSlice({
         state.callStatus = 'connected';
         state.remoteUserId = state.incomingCall.callerId;
         state.remoteUserName = state.incomingCall.callerName;
+        // Clear incoming call data
         state.incomingCall = null;
         state.error = null;
+        // Reset media states to defaults
+        state.isVideoEnabled = state.callType === 'video';
+        state.isAudioEnabled = true;
+        state.isSpeakerEnabled = false;
       }
     },
     
     // Reject incoming call
     rejectCall: (state) => {
+      // Clear incoming call data
       state.incomingCall = null;
       state.callStatus = 'idle';
+      state.error = null;
+      // Reset any partial call state
+      state.isInCall = false;
+      state.callType = null;
+      state.remoteUserId = null;
+      state.remoteUserName = null;
     },
     
     // End current call
@@ -104,8 +114,6 @@ const callSlice = createSlice({
       state.remoteUserId = null;
       state.remoteUserName = null;
       state.incomingCall = null;
-      state.localStream = null;
-      state.remoteStream = null;
       state.connectionState = 'new';
       state.error = null;
     },
@@ -150,15 +158,6 @@ const callSlice = createSlice({
       state.isSpeakerEnabled = action.payload;
     },
     
-    // Stream management
-    setLocalStream: (state, action) => {
-      state.localStream = action.payload;
-    },
-    
-    setRemoteStream: (state, action) => {
-      state.remoteStream = action.payload;
-    },
-    
     // Error handling
     setCallError: (state, action) => {
       state.error = action.payload;
@@ -199,8 +198,6 @@ export const {
   setVideoEnabled,
   setAudioEnabled,
   setSpeakerEnabled,
-  setLocalStream,
-  setRemoteStream,
   setCallError,
   clearCallError,
   clearCallHistory,

@@ -13,12 +13,52 @@ class WebRTCService {
     this.onSignalCallback = null;
     this.iceCandidates = [];
     this.pendingCandidates = [];
+    // Keep track of all created tracks for comprehensive cleanup
+    this.allTracks = [];
   }
 
   // Initialize local media stream
   async initializeLocalStream(constraints = { video: true, audio: true }) {
     try {
+      console.log('Requesting media with constraints:', constraints);
+      
+      // Ensure audio constraints are properly set for voice calls
+      if (constraints.audio === true) {
+        constraints.audio = {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          sampleRate: 44100
+        };
+      }
+      
       this.localStream = await navigator.mediaDevices.getUserMedia(constraints);
+      
+      // Initialize global track registry if it doesn't exist
+      if (!window.globalMediaTracks) {
+        window.globalMediaTracks = [];
+      }
+      
+      // Track all created tracks for comprehensive cleanup
+      this.localStream.getTracks().forEach(track => {
+        this.allTracks.push(track);
+        window.globalMediaTracks.push(track); // Global registry
+        console.log('Tracking media track:', track.kind, track.id, 'readyState:', track.readyState);
+      });
+      
+      console.log('Media stream obtained:', {
+        audioTracks: this.localStream.getAudioTracks().length,
+        videoTracks: this.localStream.getVideoTracks().length,
+        totalTracked: this.allTracks.length,
+        globalTracked: window.globalMediaTracks.length
+      });
+      
+      // Ensure audio tracks are enabled
+      this.localStream.getAudioTracks().forEach(track => {
+        console.log('Audio track enabled:', track.enabled);
+        track.enabled = true;
+      });
+      
       return this.localStream;
     } catch (error) {
       console.error('Error accessing media devices:', error);
@@ -84,7 +124,10 @@ class WebRTCService {
 
     // Handle incoming stream
     this.peer.on('stream', (stream) => {
-      console.log('Remote stream received');
+      console.log('Remote stream received:', {
+        audioTracks: stream.getAudioTracks().length,
+        videoTracks: stream.getVideoTracks().length
+      });
       this.remoteStream = stream;
       if (this.onStreamCallback) {
         this.onStreamCallback(stream);
@@ -221,18 +264,38 @@ class WebRTCService {
 
   // Clean up and close connection
   cleanup() {
-    // Stop local stream tracks
-    if (this.localStream) {
-      this.localStream.getTracks().forEach(track => {
+    console.log('WebRTC cleanup started - stopping all media tracks');
+    
+    // Stop ALL tracked media tracks first
+    console.log('Stopping', this.allTracks.length, 'tracked media tracks');
+    this.allTracks.forEach(track => {
+      if (track.readyState !== 'ended') {
+        console.log('Stopping tracked track:', track.kind, track.id, 'readyState:', track.readyState);
         track.stop();
+      }
+    });
+    this.allTracks = []; // Clear the tracking array
+    
+    // Stop local stream tracks (backup)
+    if (this.localStream) {
+      console.log('Stopping local stream tracks:', this.localStream.getTracks().length);
+      this.localStream.getTracks().forEach(track => {
+        if (track.readyState !== 'ended') {
+          console.log('Stopping local track (backup):', track.kind, track.id, 'readyState:', track.readyState);
+          track.stop();
+        }
       });
       this.localStream = null;
     }
 
-    // Stop remote stream tracks
+    // Stop remote stream tracks (backup)
     if (this.remoteStream) {
+      console.log('Stopping remote stream tracks:', this.remoteStream.getTracks().length);
       this.remoteStream.getTracks().forEach(track => {
-        track.stop();
+        if (track.readyState !== 'ended') {
+          console.log('Stopping remote track (backup):', track.kind, track.id);
+          track.stop();
+        }
       });
       this.remoteStream = null;
     }
@@ -328,5 +391,35 @@ class WebRTCService {
     }
   }
 }
+
+// Global utility to force stop all media tracks
+export const forceStopAllMediaTracks = () => {
+  console.log('🚨 FORCE STOPPING ALL MEDIA TRACKS');
+  
+  // Try to enumerate and stop all active media tracks
+  if (navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) {
+    navigator.mediaDevices.enumerateDevices().then(devices => {
+      console.log('Available media devices:', devices.length);
+      devices.forEach(device => {
+        console.log('Device:', device.kind, device.label, device.deviceId);
+      });
+    }).catch(err => {
+      console.log('Could not enumerate devices:', err);
+    });
+  }
+  
+  // Stop all tracks that might still be active
+  if (window.globalMediaTracks) {
+    window.globalMediaTracks.forEach(track => {
+      if (track.readyState !== 'ended') {
+        console.log('🚨 Force stopping global track:', track.kind, track.id);
+        track.stop();
+      }
+    });
+    window.globalMediaTracks = [];
+  }
+  
+  return true;
+};
 
 export default WebRTCService;

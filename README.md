@@ -1,18 +1,42 @@
-# SecureChat - Encrypted Chat Application
+# Communication App - Video Calling & Chat
 
-A modern, secure chat application built with React.js and Node.js featuring end-to-end encryption for private communications.
+A modern, secure chat application with **video calling capabilities** built with React.js and Node.js featuring end-to-end encryption for private communications.
 
-## Features
+## 🎯 Key Features
 
-🔐 **End-to-End Encryption** - All messages are encrypted on the client side using AES encryption
-👥 **Multi-User Chat** - Support for one-on-one and group conversations
-📱 **Responsive Design** - Beautiful UI that works on desktop and mobile
-🟢 **Real-time Status** - See when users are online/offline
+🎥 **Video & Voice Calls** - WebRTC-powered real-time video and audio calling
+� **Mobile Responsive** - Optimized for mobile devices with touch-friendly controls  
+�🔐 **End-to-End Encryption** - All messages are encrypted on the client side using AES encryption
+👥 **Multi-User Chat** - Support for one-on-one conversations
+ **Real-time Status** - See when users are online/offline
 ⚡ **Live Typing Indicators** - Know when someone is typing
-🔑 **Simple Registration** - Only name and phone number required
-🚀 **Real-time Messaging** - Instant message delivery using Socket.io
-💾 **Persistent Storage** - All data is stored in JSON files and persists between server restarts
-🛡️ **Data Validation** - Phone numbers must be exactly 10 digits, names minimum 2 characters
+🌐 **Network Ready** - Access from multiple devices on same WiFi network
+
+## 🚀 Quick Start (Network Access Enabled by Default)
+
+Both servers are now configured to allow network access automatically:
+
+```bash
+# Terminal 1 - Backend
+cd backend
+npm start
+
+# Terminal 2 - Frontend  
+cd frontend
+npm start
+```
+
+**Access URLs:**
+- Local: http://localhost:3000
+- Network: http://YOUR_IP:3000 (shown in React terminal output)
+
+## � Video Calling Features
+
+- **Call Types**: Both video and voice calls supported
+- **Mobile Optimized**: Auto-hiding controls, camera switching, fullscreen mode
+- **Call Controls**: Mute, video toggle, speaker toggle, end call
+- **WebRTC**: Peer-to-peer real-time communication
+- **Cross-Device**: Call between phones, tablets, computers on same network
 
 ## Technology Stack
 

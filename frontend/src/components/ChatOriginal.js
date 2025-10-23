@@ -99,7 +99,7 @@ const Chat = ({ user, onLogout }) => {
     return () => {
       newSocket.disconnect();
     };
-  }, [user.id, fetchUsers, fetchMessages]);
+  }, [user.id]);
 
   useEffect(() => {
     scrollToBottom();

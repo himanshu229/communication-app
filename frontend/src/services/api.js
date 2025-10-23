@@ -1,5 +1,7 @@
 // API service for HTTP requests
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5001/api';
+import { getApiUrl } from '../config/urls';
+
+const API_BASE_URL = getApiUrl();
 
 class ApiService {
   // Generic fetch method with error handling

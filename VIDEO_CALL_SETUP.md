@@ -76,6 +76,7 @@
 
 ## 🚀 How to Test
 
+### Local Testing
 1. **Start the backend**: `cd backend && npm start`
 2. **Start the frontend**: `cd frontend && npm start`
 3. **Login with two different users** in separate browser windows/tabs
@@ -83,6 +84,28 @@
 5. **Click the video/voice call buttons** in the chat header
 6. **Accept the incoming call** in the other window
 7. **Test the call controls** (mute, video toggle, end call)
+
+### Network Testing (Multiple Devices)
+1. **Easy method**: Run `./start-network.sh` from the project root
+2. **Default method (now configured automatically)**:
+   - Start backend: `cd backend && npm start`
+   - Start frontend: `cd frontend && npm start`
+3. **For local-only development**:
+   - Start backend: `cd backend && npm run start:local`
+   - Start frontend: `cd frontend && npm run start:local`
+4. **Access from other devices**: Use the network URL shown (e.g., `http://172.20.10.3:3000`)
+5. **Ensure all devices are on the same WiFi network**
+
+### Configuration
+- **Default**: Both servers now start with `HOST=0.0.0.0` for network access
+- **Environment files**: `.env` files configure HOST and PORT settings
+- **Local development**: Use `:local` scripts for localhost-only access
+
+### CORS Configuration
+The app now supports:
+- Local development (`localhost`, `127.0.0.1`)
+- Network access (common private IP ranges)
+- Automatic backend URL detection based on frontend URL
 
 ## 📱 Mobile Testing
 

@@ -1,4 +1,5 @@
 import io from 'socket.io-client';
+import { getSocketUrl } from '../config/urls';
 
 class SocketService {
   constructor() {
@@ -8,7 +9,7 @@ class SocketService {
   }
 
   // Initialize socket connection
-  connect(serverUrl = 'http://localhost:5001') {
+  connect(serverUrl = getSocketUrl()) {
     if (this.socket) {
       this.disconnect();
     }
