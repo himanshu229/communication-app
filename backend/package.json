@@ -5,12 +5,12 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "start:https": "USE_HTTPS=true node server.js",
-    "start:network": "HOST=0.0.0.0 USE_HTTPS=true node server.js",
+    "start:https": "cross-env USE_HTTPS=true node server.js",
+    "start:network": "cross-env HOST=0.0.0.0 USE_HTTPS=true node server.js",
     "dev": "nodemon server.js",
-    "dev:https": "USE_HTTPS=true nodemon server.js",
-    "start:local": "HOST=localhost node server.js",
-    "dev:local": "HOST=localhost nodemon server.js"
+    "dev:https": "cross-env USE_HTTPS=true nodemon server.js",
+    "start:local": "cross-env HOST=localhost node server.js",
+    "dev:local": "cross-env HOST=localhost nodemon server.js"
   },
   "dependencies": {
     "cookie-parser": "^1.4.6",
@@ -24,6 +24,7 @@
     "uuid": "^9.0.1"
   },
   "devDependencies": {
+    "cross-env": "^7.0.3",
     "nodemon": "^3.0.1"
   },
   "keywords": [
