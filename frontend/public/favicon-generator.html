@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Generate Favicon</title>
+</head>
+<body>
+    <h1>Favicon Generator</h1>
+    <p>This is a simple tool to create a basic favicon for the communication app.</p>
+    <canvas id="favicon" width="32" height="32" style="border: 1px solid #ccc;"></canvas>
+    
+    <script>
+        const canvas = document.getElementById('favicon');
+        const ctx = canvas.getContext('2d');
+        
+        // Create a simple phone icon
+        ctx.fillStyle = '#4F46E5';
+        ctx.fillRect(0, 0, 32, 32);
+        
+        ctx.fillStyle = '#FFFFFF';
+        ctx.font = '20px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText('📞', 16, 22);
+        
+        // Convert to ICO (basic implementation)
+        const link = document.createElement('a');
+        link.download = 'favicon.ico';
+        link.href = canvas.toDataURL();
+        document.body.appendChild(link);
+        
+        console.log('Click the canvas to download favicon');
+        canvas.onclick = () => link.click();
+    </script>
+</body>
+</html>
