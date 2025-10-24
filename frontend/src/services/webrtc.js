@@ -27,42 +27,21 @@ class WebRTCService {
     this.localStream = null;
     this.remoteStream = null;
     this.isInitiator = false;
-    this.isInitializing = false; // Guard against multiple initializations
-    this.isSetupForCall = false; // Guard against multiple call setups
+    this.isInitializing = false;
     this.onStreamCallback = null;
     this.onErrorCallback = null;
     this.onConnectCallback = null;
     this.onCloseCallback = null;
     this.onSignalCallback = null;
-    this.iceCandidates = [];
-    this.pendingCandidates = [];
-    // Keep track of all created tracks for comprehensive cleanup
     this.allTracks = [];
   }
 
   // Initialize local media stream
   async initializeLocalStream(constraints = { video: true, audio: true }) {
     try {
-      // If we already have a stream with the same constraints, reuse it
-      if (this.localStream) {
-        const hasVideo = this.localStream.getVideoTracks().length > 0;
-        const hasAudio = this.localStream.getAudioTracks().length > 0;
-        const needsVideo = constraints.video;
-        const needsAudio = constraints.audio;
-        
-        if ((needsVideo === hasVideo) && (needsAudio === hasAudio)) {
-          console.log('Reusing existing local stream with matching constraints');
-          return this.localStream;
-        } else {
-          console.log('Constraints changed, getting new stream');
-          // Clean up old stream before getting new one
-          this.stopLocalStream();
-        }
-      }
-
       console.log('Requesting media with constraints:', constraints);
       
-      // Ensure audio constraints are properly set for voice calls
+      // Ensure audio constraints are properly set
       if (constraints.audio === true) {
         constraints.audio = {
           echoCancellation: true,
@@ -74,32 +53,16 @@ class WebRTCService {
       
       this.localStream = await navigator.mediaDevices.getUserMedia(constraints);
       
-      // Initialize global track registry if it doesn't exist
-      if (!window.globalMediaTracks) {
-        window.globalMediaTracks = [];
-      }
-      
-      // Clean up old tracks from our tracking arrays
+      // Track all created tracks for cleanup
       this.allTracks = [];
-      
-      // Track all created tracks for comprehensive cleanup
       this.localStream.getTracks().forEach(track => {
         this.allTracks.push(track);
-        window.globalMediaTracks.push(track); // Global registry
-        console.log('Tracking media track:', track.kind, track.id, 'readyState:', track.readyState);
+        console.log('Tracking media track:', track.kind, track.id);
       });
       
       console.log('Media stream obtained:', {
         audioTracks: this.localStream.getAudioTracks().length,
-        videoTracks: this.localStream.getVideoTracks().length,
-        totalTracked: this.allTracks.length,
-        globalTracked: window.globalMediaTracks.length
-      });
-      
-      // Ensure audio tracks are enabled
-      this.localStream.getAudioTracks().forEach(track => {
-        console.log('Audio track enabled:', track.enabled);
-        track.enabled = true;
+        videoTracks: this.localStream.getVideoTracks().length
       });
       
       return this.localStream;
@@ -109,24 +72,10 @@ class WebRTCService {
     }
   }
 
-  // Stop local stream tracks
-  stopLocalStream() {
-    if (this.localStream) {
-      console.log('Stopping existing local stream tracks');
-      this.localStream.getTracks().forEach(track => {
-        if (track.readyState !== 'ended') {
-          console.log('Stopping track:', track.kind, track.id);
-          track.stop();
-        }
-      });
-      this.localStream = null;
-    }
-  }
-
   // Create peer connection as initiator (caller)
   createPeerAsInitiator(stream) {
     if (this.peer) {
-      console.log('Peer already exists, destroying old one before creating new');
+      console.log('Peer already exists, destroying old one');
       this.peer.destroy();
     }
     
@@ -139,9 +88,7 @@ class WebRTCService {
         iceServers: [
           { urls: 'stun:stun.l.google.com:19302' },
           { urls: 'stun:stun1.l.google.com:19302' },
-          { urls: 'stun:stun2.l.google.com:19302' },
-          { urls: 'stun:stun3.l.google.com:19302' },
-          { urls: 'stun:stun4.l.google.com:19302' }
+          { urls: 'stun:stun2.l.google.com:19302' }
         ]
       }
     });
@@ -153,7 +100,7 @@ class WebRTCService {
   // Create peer connection as receiver (callee)
   createPeerAsReceiver(stream) {
     if (this.peer) {
-      console.log('Peer already exists, destroying old one before creating new');
+      console.log('Peer already exists, destroying old one');
       this.peer.destroy();
     }
     
@@ -166,9 +113,7 @@ class WebRTCService {
         iceServers: [
           { urls: 'stun:stun.l.google.com:19302' },
           { urls: 'stun:stun1.l.google.com:19302' },
-          { urls: 'stun:stun2.l.google.com:19302' },
-          { urls: 'stun:stun3.l.google.com:19302' },
-          { urls: 'stun:stun4.l.google.com:19302' }
+          { urls: 'stun:stun2.l.google.com:19302' }
         ]
       }
     });
@@ -191,39 +136,15 @@ class WebRTCService {
 
     // Handle incoming stream
     this.peer.on('stream', (stream) => {
-      console.log('🎥 Remote stream received in WebRTC service:', {
+      console.log('Remote stream received:', {
         audioTracks: stream.getAudioTracks().length,
-        videoTracks: stream.getVideoTracks().length,
-        id: stream.id,
-        active: stream.active
+        videoTracks: stream.getVideoTracks().length
       });
       
-      // Store the remote stream
       this.remoteStream = stream;
       
-      // Ensure tracks are enabled and log their status
-      stream.getAudioTracks().forEach((track, index) => {
-        console.log(`🎵 Remote audio track ${index}:`, {
-          enabled: track.enabled,
-          readyState: track.readyState,
-          muted: track.muted
-        });
-      });
-      
-      stream.getVideoTracks().forEach((track, index) => {
-        console.log(`🎥 Remote video track ${index}:`, {
-          enabled: track.enabled,
-          readyState: track.readyState,
-          muted: track.muted
-        });
-      });
-      
-      // Notify callback if available
       if (this.onStreamCallback) {
-        console.log('🎥 Calling onStreamCallback with remote stream');
         this.onStreamCallback(stream);
-      } else {
-        console.warn('🎥 No onStreamCallback set for remote stream');
       }
     });
 
@@ -250,11 +171,6 @@ class WebRTCService {
         this.onErrorCallback(error);
       }
     });
-
-    // Handle data channel (for future text messaging during calls)
-    this.peer.on('data', (data) => {
-      console.log('Data received:', data.toString());
-    });
   }
 
   // Process incoming signal (offer/answer)
@@ -268,13 +184,6 @@ class WebRTCService {
       this.peer.signal(signalData);
     } catch (error) {
       console.error('Error processing signal:', error);
-    }
-  }
-
-  // Send data through data channel
-  sendData(data) {
-    if (this.peer && this.peer.connected) {
-      this.peer.send(data);
     }
   }
 
@@ -310,7 +219,6 @@ class WebRTCService {
       const videoTrack = this.localStream.getVideoTracks()[0];
       const currentConstraints = videoTrack.getConstraints();
       
-      // Toggle between user (front) and environment (back) camera
       const facingMode = currentConstraints.facingMode === 'user' ? 'environment' : 'user';
       
       const newStream = await navigator.mediaDevices.getUserMedia({
@@ -377,45 +285,31 @@ class WebRTCService {
 
   // Clean up and close connection
   cleanup() {
-    console.log('WebRTC cleanup started - stopping all media tracks');
+    console.log('WebRTC cleanup started');
     
-    // Reset initialization flags
-    this.isInitializing = false;
-    this.isSetupForCall = false;
-    
-    // Clear global setup flag
-    if (typeof window !== 'undefined') {
-      window.webrtcSetupInProgress = false;
-    }
-    
-    // Stop ALL tracked media tracks first
-    console.log('Stopping', this.allTracks.length, 'tracked media tracks');
+    // Stop all tracked media tracks
     this.allTracks.forEach(track => {
       if (track.readyState !== 'ended') {
-        console.log('Stopping tracked track:', track.kind, track.id, 'readyState:', track.readyState);
+        console.log('Stopping tracked track:', track.kind, track.id);
         track.stop();
       }
     });
-    this.allTracks = []; // Clear the tracking array
+    this.allTracks = [];
     
-    // Stop local stream tracks (backup)
+    // Stop local stream tracks
     if (this.localStream) {
-      console.log('Stopping local stream tracks:', this.localStream.getTracks().length);
       this.localStream.getTracks().forEach(track => {
         if (track.readyState !== 'ended') {
-          console.log('Stopping local track (backup):', track.kind, track.id, 'readyState:', track.readyState);
           track.stop();
         }
       });
       this.localStream = null;
     }
 
-    // Stop remote stream tracks (backup)
+    // Stop remote stream tracks
     if (this.remoteStream) {
-      console.log('Stopping remote stream tracks:', this.remoteStream.getTracks().length);
       this.remoteStream.getTracks().forEach(track => {
         if (track.readyState !== 'ended') {
-          console.log('Stopping remote track (backup):', track.kind, track.id);
           track.stop();
         }
       });
@@ -434,18 +328,12 @@ class WebRTCService {
     this.onConnectCallback = null;
     this.onCloseCallback = null;
     this.onSignalCallback = null;
-    
-    // Clear candidates
-    this.iceCandidates = [];
-    this.pendingCandidates = [];
   }
 
   // Set event callbacks
   onRemoteStream(callback) {
     this.onStreamCallback = callback;
-    // If peer already exists and has received a stream, call the callback immediately
     if (this.remoteStream) {
-      console.log('WebRTC: Remote stream already exists, calling callback immediately');
       callback(this.remoteStream);
     }
   }
@@ -487,66 +375,6 @@ class WebRTCService {
               navigator.mediaDevices.getUserMedia && 
               window.RTCPeerConnection);
   }
-
-  // Get supported constraints
-  static async getSupportedConstraints() {
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getSupportedConstraints) {
-      return {};
-    }
-    return navigator.mediaDevices.getSupportedConstraints();
-  }
-
-  // Check if device has camera
-  static async hasCamera() {
-    try {
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      return devices.some(device => device.kind === 'videoinput');
-    } catch (error) {
-      console.error('Error checking for camera:', error);
-      return false;
-    }
-  }
-
-  // Check if device has microphone
-  static async hasMicrophone() {
-    try {
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      return devices.some(device => device.kind === 'audioinput');
-    } catch (error) {
-      console.error('Error checking for microphone:', error);
-      return false;
-    }
-  }
 }
-
-// Global utility to force stop all media tracks
-export const forceStopAllMediaTracks = () => {
-  console.log('🚨 FORCE STOPPING ALL MEDIA TRACKS');
-  
-  // Try to enumerate and stop all active media tracks
-  if (navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) {
-    navigator.mediaDevices.enumerateDevices().then(devices => {
-      console.log('Available media devices:', devices.length);
-      devices.forEach(device => {
-        console.log('Device:', device.kind, device.label, device.deviceId);
-      });
-    }).catch(err => {
-      console.log('Could not enumerate devices:', err);
-    });
-  }
-  
-  // Stop all tracks that might still be active
-  if (window.globalMediaTracks) {
-    window.globalMediaTracks.forEach(track => {
-      if (track.readyState !== 'ended') {
-        console.log('🚨 Force stopping global track:', track.kind, track.id);
-        track.stop();
-      }
-    });
-    window.globalMediaTracks = [];
-  }
-  
-  return true;
-};
 
 export default WebRTCService;

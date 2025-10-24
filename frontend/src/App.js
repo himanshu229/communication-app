@@ -23,6 +23,9 @@ function App() {
       const sslAccepted = await checkAndAcceptBackendSSL();
       setSslChecked(true);
       
+      // Initialize ringtone service
+      await ringtoneService.initialize();
+      
       if (sslAccepted) {
         // Attempt to fetch current user via cookie
         dispatch(fetchCurrentUser());
@@ -31,37 +34,29 @@ function App() {
 
     initializeApp();
 
-    // Handle page refresh/close during active call
-    const handleBeforeUnload = (event) => {
-      if (call.isInCall || call.incomingCall) {
-        // Notify remote user about call end
-        const targetUserId = call.remoteUserId || call.incomingCall?.callerId;
-        if (targetUserId && user?.id) {
-          socketService.endCall({
-            to: targetUserId,
-            from: user.id
-          });
-        }
-        
-        // Clear call state
-        dispatch(endCall());
-        
-        // Show warning message
-        const message = 'You have an active call. Are you sure you want to leave?';
-        event.returnValue = message;
-        return message;
+    // Cleanup function
+    return () => {
+      // Cleanup ringtone service on unmount
+      ringtoneService.cleanup();
+    };
+  }, []); // Remove user?.id dependency to prevent infinite loop
+
+  // Handle page refresh/close during calls
+  useEffect(() => {
+    const handleBeforeUnload = (e) => {
+      if (call.isInCall) {
+        e.preventDefault();
+        e.returnValue = 'You have an active call. Are you sure you want to leave?';
+        // End the call when user leaves
+        dispatch(endCall({ duration: call.callDuration, status: 'ended' }));
       }
     };
 
-    // Add event listener
     window.addEventListener('beforeunload', handleBeforeUnload);
-
-    // Cleanup function
     return () => {
       window.removeEventListener('beforeunload', handleBeforeUnload);
-      ringtoneService.cleanup();
     };
-  }, [call.isInCall, call.incomingCall, call.remoteUserId, user?.id]);
+  }, [call.isInCall, call.callDuration, dispatch]);
 
   const handleLogout = async () => {
     // Disconnect socket before logging out
@@ -88,15 +83,14 @@ function App() {
   return (
     <div className="text-center">
       {isAuthenticated && user ? (
-        <>
-          <Chat onLogout={handleLogout} />
-          {/* Call Components */}
-          {(call.isInCall || call.callStatus === 'calling' || call.callStatus === 'connected') && <VideoCall />}
-          {incomingCall && <IncomingCall />}
-        </>
+        <Chat onLogout={handleLogout} />
       ) : (
         <Auth />
       )}
+      
+      {/* Call Components */}
+      {call.isInCall && <VideoCall />}
+      {incomingCall && <IncomingCall />}
     </div>
   );
 }

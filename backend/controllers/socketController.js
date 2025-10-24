@@ -1,8 +1,9 @@
 class SocketController {
-  constructor(io, userController, chatController) {
+  constructor(io, userController, chatController, callController) {
     this.io = io;
     this.userController = userController;
     this.chatController = chatController;
+    this.callController = callController;
   }
 
   handleConnection = (socket) => {
@@ -86,7 +87,7 @@ class SocketController {
       });
     });
 
-    // Call-related handlers
+    // New Call System Handlers
     socket.on('initiate_call', (data) => {
       if (!data || !data.from || !data.to) {
         console.log('Invalid initiate_call data received:', data);
@@ -94,72 +95,134 @@ class SocketController {
       }
       
       console.log(`Call initiated from ${data.from} to ${data.to}:`, data);
-      const targetUser = this.userController.getUserById(data.to);
       
-      if (targetUser && targetUser.socketId && targetUser.isOnline) {
-        this.io.to(targetUser.socketId).emit('incoming_call', {
-          from: data.from,
-          fromName: data.fromName,
-          callType: data.callType,
-          roomId: data.roomId
-        });
+      // Use call controller to initiate call
+      const result = this.callController.initiateCall(
+        data.from,
+        data.to,
+        data.callType,
+        data.roomId
+      );
+      
+      if (result.success) {
+        // Send incoming call to target user only
+        const targetUser = this.userController.getUserById(data.to);
+        if (targetUser && targetUser.socketId && targetUser.isOnline) {
+          this.io.to(targetUser.socketId).emit('incoming_call', {
+            callId: result.callData.id,
+            callerId: data.from,
+            callerName: result.callData.callerName,
+            callType: data.callType,
+            roomId: data.roomId
+          });
+          
+          // Send success confirmation to caller
+          this.io.to(socket.id).emit('call_initiated', {
+            callId: result.callData.id,
+            success: true
+          });
+        } else {
+          // User is offline or not found
+          this.io.to(socket.id).emit('call_failed', {
+            reason: 'User is offline or not found'
+          });
+        }
       } else {
-        // User is offline or not found
+        // Send error back to caller
         this.io.to(socket.id).emit('call_failed', {
-          reason: 'User is offline or not found'
+          reason: result.error
         });
       }
     });
 
-    socket.on('answer_call', (data) => {
-      if (!data || !data.from || !data.to) {
-        console.log('Invalid answer_call data received:', data);
+    socket.on('accept_call', (data) => {
+      if (!data || !data.callId || !data.userId) {
+        console.log('Invalid accept_call data received:', data);
         return;
       }
       
-      console.log(`Call answered by ${data.from} to ${data.to}:`, data);
-      const targetUser = this.userController.getUserById(data.to);
+      console.log(`Call accepted by ${data.userId} for call ${data.callId}`);
       
-      if (targetUser && targetUser.socketId) {
-        this.io.to(targetUser.socketId).emit('call_accepted', {
-          from: data.from
+      // Use call controller to accept call
+      const result = this.callController.acceptCall(data.callId, data.userId);
+      
+      if (result.success) {
+        // Notify caller that call was accepted
+        const caller = this.userController.getUserById(result.callData.callerId);
+        if (caller && caller.socketId) {
+          this.io.to(caller.socketId).emit('call_accepted', {
+            callId: data.callId,
+            calleeId: data.userId
+          });
+        }
+      } else {
+        // Send error back to callee
+        this.io.to(socket.id).emit('call_failed', {
+          reason: result.error
         });
       }
     });
 
     socket.on('reject_call', (data) => {
-      if (!data || !data.from || !data.to) {
+      if (!data || !data.callId || !data.userId) {
         console.log('Invalid reject_call data received:', data);
         return;
       }
       
-      console.log(`Call rejected by ${data.from} to ${data.to}:`, data);
-      const targetUser = this.userController.getUserById(data.to);
+      console.log(`Call rejected by ${data.userId} for call ${data.callId}`);
       
-      if (targetUser && targetUser.socketId) {
-        this.io.to(targetUser.socketId).emit('call_rejected', {
-          from: data.from
+      // Use call controller to reject call
+      const result = this.callController.rejectCall(data.callId, data.userId);
+      
+      if (result.success) {
+        // Notify caller that call was rejected
+        const caller = this.userController.getUserById(result.callData.callerId);
+        if (caller && caller.socketId) {
+          this.io.to(caller.socketId).emit('call_rejected', {
+            callId: data.callId,
+            calleeId: data.userId
+          });
+        }
+      } else {
+        // Send error back to callee
+        this.io.to(socket.id).emit('call_failed', {
+          reason: result.error
         });
       }
     });
 
     socket.on('end_call', (data) => {
-      if (!data || !data.from || !data.to) {
+      if (!data || !data.callId || !data.userId) {
         console.log('Invalid end_call data received:', data);
         return;
       }
       
-      console.log(`Call ended by ${data.from} to ${data.to}:`, data);
-      const targetUser = this.userController.getUserById(data.to);
+      console.log(`Call ended by ${data.userId} for call ${data.callId}`);
       
-      if (targetUser && targetUser.socketId) {
-        this.io.to(targetUser.socketId).emit('call_ended', {
-          from: data.from
+      // Use call controller to end call
+      const result = this.callController.endCall(data.callId, data.userId);
+      
+      if (result.success) {
+        // Notify the other participant
+        const otherUserId = result.callData.callerId === data.userId ? 
+          result.callData.calleeId : result.callData.callerId;
+        const otherUser = this.userController.getUserById(otherUserId);
+        
+        if (otherUser && otherUser.socketId) {
+          this.io.to(otherUser.socketId).emit('call_ended', {
+            callId: data.callId,
+            endedBy: data.userId
+          });
+        }
+      } else {
+        // Send error back to user
+        this.io.to(socket.id).emit('call_failed', {
+          reason: result.error
         });
       }
     });
 
-    // WebRTC signaling handlers
+    // WebRTC signaling handlers (for direct peer-to-peer communication)
     socket.on('call_offer', (data) => {
       if (!data || !data.from || !data.to) {
         console.log('Invalid call_offer data received:', data);
@@ -212,18 +275,6 @@ class SocketController {
       }
     });
 
-    socket.on('call_status_update', (data) => {
-      console.log(`Call status update from ${data.from} to ${data.to}:`, data.status);
-      const targetUser = this.userController.getUserById(data.to);
-      
-      if (targetUser && targetUser.socketId) {
-        this.io.to(targetUser.socketId).emit('call_status_update', {
-          from: data.from,
-          status: data.status
-        });
-      }
-    });
-
     // Handle disconnection
     socket.on('disconnect', () => {
       console.log('User disconnected:', socket.id);
@@ -241,6 +292,9 @@ class SocketController {
         const user = this.userController.updateUserStatus(userId, false);
         
         if (user) {
+          // Clean up any active calls for this user
+          this.callController.cleanupUserCalls(userId);
+          
           // Emit to all (including sender)
             this.io.emit('user_status_changed', {
             userId,

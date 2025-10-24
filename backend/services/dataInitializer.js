@@ -19,6 +19,10 @@ class DataInitializer {
     return {};
   }
 
+  getDefaultCallHistory() {
+    return {};
+  }
+
   // Initialize data directory and files
   initializeDataFiles() {
     console.log('Initializing data files...');
@@ -45,6 +49,11 @@ class DataInitializer {
         path: path.join(this.dataDir, 'messages.json'),
         data: this.getDefaultMessages(),
         description: 'Messages'
+      },
+      {
+        path: path.join(this.dataDir, 'callHistory.json'),
+        data: this.getDefaultCallHistory(),
+        description: 'Call History'
       }
     ];
 
@@ -71,7 +80,8 @@ class DataInitializer {
     const files = [
       path.join(this.dataDir, 'users.json'),
       path.join(this.dataDir, 'chatRooms.json'),
-      path.join(this.dataDir, 'messages.json')
+      path.join(this.dataDir, 'messages.json'),
+      path.join(this.dataDir, 'callHistory.json')
     ];
 
     for (const filePath of files) {
@@ -96,7 +106,8 @@ class DataInitializer {
     const files = [
       path.join(this.dataDir, 'users.json'),
       path.join(this.dataDir, 'chatRooms.json'),
-      path.join(this.dataDir, 'messages.json')
+      path.join(this.dataDir, 'messages.json'),
+      path.join(this.dataDir, 'callHistory.json')
     ];
 
     return files.every(filePath => fs.existsSync(filePath));

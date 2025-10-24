@@ -5,6 +5,7 @@ const initialState = {
   isInCall: false,
   callType: null, // 'video' | 'voice'
   callStatus: 'idle', // 'idle' | 'calling' | 'ringing' | 'connected' | 'ended'
+  callId: null,
   
   // Call participants
   localUserId: null,
@@ -12,7 +13,7 @@ const initialState = {
   remoteUserName: null,
   
   // Incoming call data
-  incomingCall: null, // { callerId, callerName, callType, roomId }
+  incomingCall: null, // { callId, callerId, callerName, callType, roomId }
   
   // Media state
   isVideoEnabled: true,
@@ -26,7 +27,11 @@ const initialState = {
   error: null,
   
   // Call history
-  callHistory: []
+  callHistory: [],
+  
+  // Call duration
+  callDuration: 0,
+  callStartTime: null
 };
 
 const callSlice = createSlice({
@@ -35,19 +40,28 @@ const callSlice = createSlice({
   reducers: {
     // Initialize outgoing call
     initiateCall: (state, action) => {
-      const { userId, userName, callType, roomId } = action.payload;
+      const { userId, userName, callType } = action.payload;
       state.isInCall = true;
       state.callType = callType;
       state.callStatus = 'calling';
       state.remoteUserId = userId;
       state.remoteUserName = userName;
+      state.callId = null; // Will be set when call is initiated
       state.error = null;
+      state.callStartTime = null;
+      state.callDuration = 0;
+    },
+    
+    // Set call ID after initiation
+    setCallId: (state, action) => {
+      state.callId = action.payload;
     },
     
     // Receive incoming call
     receiveIncomingCall: (state, action) => {
-      const { callerId, callerName, callType, roomId } = action.payload;
+      const { callId, callerId, callerName, callType, roomId } = action.payload;
       state.incomingCall = {
+        callId,
         callerId,
         callerName,
         callType,
@@ -65,6 +79,8 @@ const callSlice = createSlice({
         state.callStatus = 'connected';
         state.remoteUserId = state.incomingCall.callerId;
         state.remoteUserName = state.incomingCall.callerName;
+        state.callId = state.incomingCall.callId;
+        state.callStartTime = Date.now();
         // Clear incoming call data
         state.incomingCall = null;
         state.error = null;
@@ -86,20 +102,24 @@ const callSlice = createSlice({
       state.callType = null;
       state.remoteUserId = null;
       state.remoteUserName = null;
+      state.callId = null;
     },
     
     // End current call
     endCall: (state) => {
       // Add to call history before clearing
-      if (state.isInCall && state.remoteUserId) {
-        state.callHistory.unshift({
+      if (state.isInCall && state.remoteUserId && state.callId) {
+        const callRecord = {
+          id: state.callId,
           userId: state.remoteUserId,
           userName: state.remoteUserName,
           callType: state.callType,
-          duration: 0, // Will be calculated by component
+          duration: state.callDuration,
           timestamp: new Date().toISOString(),
           status: 'ended'
-        });
+        };
+        
+        state.callHistory.unshift(callRecord);
         
         // Keep only last 50 calls
         if (state.callHistory.length > 50) {
@@ -114,13 +134,19 @@ const callSlice = createSlice({
       state.remoteUserId = null;
       state.remoteUserName = null;
       state.incomingCall = null;
+      state.callId = null;
       state.connectionState = 'new';
       state.error = null;
+      state.callStartTime = null;
+      state.callDuration = 0;
     },
     
     // Update call status
     updateCallStatus: (state, action) => {
       state.callStatus = action.payload;
+      if (action.payload === 'connected' && !state.callStartTime) {
+        state.callStartTime = Date.now();
+      }
     },
     
     // Update connection state
@@ -158,6 +184,11 @@ const callSlice = createSlice({
       state.isSpeakerEnabled = action.payload;
     },
     
+    // Update call duration
+    updateCallDuration: (state, action) => {
+      state.callDuration = action.payload;
+    },
+    
     // Error handling
     setCallError: (state, action) => {
       state.error = action.payload;
@@ -172,6 +203,10 @@ const callSlice = createSlice({
     },
     
     // Call history management
+    setCallHistory: (state, action) => {
+      state.callHistory = action.payload;
+    },
+    
     clearCallHistory: (state) => {
       state.callHistory = [];
     },
@@ -185,6 +220,7 @@ const callSlice = createSlice({
 
 export const {
   initiateCall,
+  setCallId,
   receiveIncomingCall,
   acceptCall,
   rejectCall,
@@ -198,8 +234,10 @@ export const {
   setVideoEnabled,
   setAudioEnabled,
   setSpeakerEnabled,
+  updateCallDuration,
   setCallError,
   clearCallError,
+  setCallHistory,
   clearCallHistory,
   resetCallState
 } = callSlice.actions;
@@ -222,5 +260,6 @@ export const selectMediaState = (state) => ({
 export const selectCallHistory = (state) => state.call.callHistory;
 export const selectCallError = (state) => state.call.error;
 export const selectConnectionState = (state) => state.call.connectionState;
+export const selectCallDuration = (state) => state.call.callDuration;
 
 export default callSlice.reducer;

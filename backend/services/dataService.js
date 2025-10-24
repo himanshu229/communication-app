@@ -8,6 +8,7 @@ class DataService {
     this.USERS_FILE = path.join(this.DATA_DIR, 'users.json');
     this.CHAT_ROOMS_FILE = path.join(this.DATA_DIR, 'chatRooms.json');
     this.MESSAGES_FILE = path.join(this.DATA_DIR, 'messages.json');
+    this.CALL_HISTORY_FILE = path.join(this.DATA_DIR, 'callHistory.json');
     
     // Initialize data files if they don't exist
     this.dataInitializer = new DataInitializer(this.DATA_DIR);
@@ -17,6 +18,7 @@ class DataService {
     this.users = new Map(Object.entries(this.readJSONFile(this.USERS_FILE, {})));
     this.chatRooms = new Map(Object.entries(this.readJSONFile(this.CHAT_ROOMS_FILE, {})));
     this.messages = new Map(Object.entries(this.readJSONFile(this.MESSAGES_FILE, {})));
+    this.callHistory = new Map(Object.entries(this.readJSONFile(this.CALL_HISTORY_FILE, {})));
     
     // Reset all users to offline on server start
     this.resetAllUsersOffline();
@@ -185,11 +187,40 @@ class DataService {
     }
   }
 
+  // Call history operations
+  saveCallHistory() {
+    const callHistoryObj = Object.fromEntries(this.callHistory);
+    this.writeJSONFile(this.CALL_HISTORY_FILE, callHistoryObj);
+  }
+
+  addCallToHistory(callData) {
+    // Store call history by user ID for easy retrieval
+    const userId = callData.callerId;
+    if (!this.callHistory.has(userId)) {
+      this.callHistory.set(userId, []);
+    }
+    
+    const userCallHistory = this.callHistory.get(userId);
+    userCallHistory.push(callData);
+    
+    // Keep only last 100 calls per user
+    if (userCallHistory.length > 100) {
+      userCallHistory.splice(0, userCallHistory.length - 100);
+    }
+    
+    this.saveCallHistory();
+  }
+
+  getCallHistory(userId) {
+    return this.callHistory.get(userId) || [];
+  }
+
   // Save all data method
   saveAllData() {
     this.saveUsers();
     this.saveChatRooms();
     this.saveMessages();
+    this.saveCallHistory();
   }
 
   // Reload data from JSON files (useful after manual edits)

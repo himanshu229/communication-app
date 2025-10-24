@@ -14,11 +14,14 @@ const cors = require('cors');
 const DataService = require('./services/dataService');
 const UserController = require('./controllers/userController');
 const ChatController = require('./controllers/chatController');
+const CallController = require('./controllers/callController');
 const SocketController = require('./controllers/socketController');
 const UserRoutes = require('./routes/userRoutes');
 const ChatRoutes = require('./routes/chatRoutes');
+const CallRoutes = require('./routes/callRoutes');
 const auth = require('./middleware/auth');
 
+const os = require('os');
 const app = express();
 
 // SSL configuration for HTTPS
@@ -102,7 +105,8 @@ app.use(cookieParser());
 const dataService = new DataService();
 const userController = new UserController(dataService);
 const chatController = new ChatController(dataService);
-const socketController = new SocketController(io, userController, chatController);
+const callController = new CallController(dataService);
+const socketController = new SocketController(io, userController, chatController, callController);
 
 // Clean up duplicate rooms on startup
 dataService.cleanupDuplicateRooms();
@@ -110,6 +114,7 @@ dataService.cleanupDuplicateRooms();
 // Initialize routes
 const userRoutes = new UserRoutes(userController);
 const chatRoutes = new ChatRoutes(chatController);
+const callRoutes = new CallRoutes(callController);
 
 // Use routes
 // Health check endpoint for SSL certificate validation
@@ -152,6 +157,8 @@ app.get('/', (req, res) => {
 app.use('/api', userRoutes.getRouter());
 // Protect chat routes & extra endpoints
 app.use('/api', auth, chatRoutes.getRouter());
+// Protect call routes
+app.use('/api', auth, callRoutes.getRouter());
 
 // Additional API endpoints that need special handling
 app.get('/api/messages/:roomId', auth, (req, res) => {
@@ -210,11 +217,33 @@ io.on('connection', socketController.handleConnection);
 const PORT = process.env.PORT || 5001;
 const HOST = process.env.HOST || '0.0.0.0'; // Listen on all network interfaces
 
+function getLocalIPv4Addresses() {
+  const nets = os.networkInterfaces();
+  const results = [];
+  for (const name of Object.keys(nets)) {
+    for (const net of nets[name]) {
+      // Skip over non-IPv4 and internal (i.e. 127.0.0.1) addresses
+      if (net.family === 'IPv4' && !net.internal) {
+        results.push(net.address);
+      }
+    }
+  }
+  return results;
+}
+
 server.listen(PORT, HOST, () => {
   const protocol = useHTTPS ? 'https' : 'http';
   console.log(`Server running on ${HOST}:${PORT}`);
   console.log(`Local access: ${protocol}://localhost:${PORT}`);
-  console.log(`Network access: ${protocol}://172.20.10.3:${PORT}`);
+  const localIPs = getLocalIPv4Addresses();
+  if (localIPs.length) {
+    console.log('Network access:');
+    for (const ip of localIPs) {
+      console.log(`  ${protocol}://${ip}:${PORT}`);
+    }
+  } else {
+    console.log('No network IPv4 addresses found');
+  }
   console.log(`Data will be stored in: ${dataService.DATA_DIR}`);
 });
 

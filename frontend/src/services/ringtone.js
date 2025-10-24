@@ -19,7 +19,41 @@ class RingtoneService {
         return false;
       }
     }
+    
+    // Resume audio context if it's suspended (required by some browsers)
+    if (this.audioContext.state === 'suspended') {
+      this.audioContext.resume().catch(error => {
+        console.log('Could not resume audio context:', error);
+      });
+    }
+    
     return true;
+  }
+
+  // Enable audio on user interaction (required by modern browsers)
+  enableAudio() {
+    if (this.audioContext && this.audioContext.state === 'suspended') {
+      return this.audioContext.resume();
+    }
+    return Promise.resolve();
+  }
+
+  // Preload audio file for better performance
+  preloadAudio(filePath = '/sounds/ringtone.mp3') {
+    return new Promise((resolve) => {
+      const audio = new Audio(filePath);
+      audio.preload = 'auto';
+      audio.addEventListener('canplaythrough', () => {
+        console.log('Ringtone file preloaded successfully');
+        resolve(true);
+      });
+      audio.addEventListener('error', () => {
+        console.log('Ringtone file preload failed');
+        resolve(false);
+      });
+      // Trigger loading
+      audio.load();
+    });
   }
 
   // Generate ringtone using Web Audio API
@@ -78,12 +112,29 @@ class RingtoneService {
       this.audioElement.loop = true;
       this.audioElement.volume = 0.5;
       
+      // Add error handling for audio loading
+      this.audioElement.addEventListener('error', (e) => {
+        console.log('Audio file failed to load:', e);
+        this.audioElement = null;
+      });
+      
       // Try to play the audio file
-      await this.audioElement.play();
-      this.isPlaying = true;
-      return true;
+      const playPromise = this.audioElement.play();
+      
+      if (playPromise !== undefined) {
+        await playPromise;
+        this.isPlaying = true;
+        console.log('Ringtone file playing successfully');
+        return true;
+      }
+      
+      return false;
     } catch (error) {
       console.log('Audio file not available or error playing:', error);
+      // If it's a user interaction error, we'll fall back to generated sound
+      if (error.name === 'NotAllowedError') {
+        console.log('Audio playback blocked - user interaction required');
+      }
       return false;
     }
   }
@@ -93,6 +144,9 @@ class RingtoneService {
     if (this.isPlaying) {
       return;
     }
+
+    // Enable audio context on user interaction
+    await this.enableAudio();
 
     // Try to play audio file first
     const fileSuccess = await this.playRingtoneFile();
@@ -197,6 +251,13 @@ class RingtoneService {
     } catch (error) {
       console.error('Error playing call end sound:', error);
     }
+  }
+
+  // Initialize the ringtone service
+  async initialize() {
+    // Preload the audio file for better performance
+    await this.preloadAudio();
+    console.log('Ringtone service initialized');
   }
 
   // Check if audio is supported

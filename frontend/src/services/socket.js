@@ -155,13 +155,67 @@ class SocketService {
     });
   }
 
+
+  // Convenience methods for common event listeners
+  onReceiveMessage(callback) {
+    this.on('receive_message', callback);
+  }
+
+  onUserStatusChanged(callback) {
+    this.on('user_status_changed', callback);
+  }
+
+  onRoomCreated(callback) {
+    this.on('room_created', callback);
+  }
+
+  onUserTyping(callback) {
+    this.on('user_typing', callback);
+  }
+
+  onRoomJoined(callback) {
+    this.on('room_joined', callback);
+  }
+
   // Call-related socket methods
   initiateCall(callData) {
-    return this.emit('initiate_call', callData);
+    return new Promise((resolve, reject) => {
+      if (!this.socket || !this.isConnected) {
+        reject(new Error('Socket not connected'));
+        return;
+      }
+
+      // Set up one-time listeners for call response
+      const onCallSuccess = (response) => {
+        this.socket.off('call_failed', onCallError);
+        resolve(response);
+      };
+
+      const onCallError = (error) => {
+        this.socket.off('call_initiated', onCallSuccess);
+        reject(new Error(error.reason || 'Call failed'));
+      };
+
+      // Listen for success confirmation
+      this.socket.once('call_initiated', onCallSuccess);
+      
+      // Listen for failure
+      this.socket.once('call_failed', onCallError);
+
+      // Emit the call initiation
+      this.socket.emit('initiate_call', callData);
+
+      // Set timeout to avoid hanging
+      setTimeout(() => {
+        this.socket.off('call_initiated', onCallSuccess);
+        this.socket.off('call_failed', onCallError);
+        reject(new Error('Call initiation timeout'));
+      }, 10000);
+    });
   }
 
   answerCall(callData) {
-    return this.emit('answer_call', callData);
+    return this.emit('accept_call', callData);
   }
 
   rejectCall(callData) {
@@ -183,32 +237,6 @@ class SocketService {
 
   sendIceCandidate(candidateData) {
     return this.emit('ice_candidate', candidateData);
-  }
-
-  // Call status updates
-  updateCallStatus(statusData) {
-    return this.emit('call_status_update', statusData);
-  }
-
-  // Convenience methods for common event listeners
-  onReceiveMessage(callback) {
-    this.on('receive_message', callback);
-  }
-
-  onUserStatusChanged(callback) {
-    this.on('user_status_changed', callback);
-  }
-
-  onRoomCreated(callback) {
-    this.on('room_created', callback);
-  }
-
-  onUserTyping(callback) {
-    this.on('user_typing', callback);
-  }
-
-  onRoomJoined(callback) {
-    this.on('room_joined', callback);
   }
 
   // Call event listeners
@@ -240,9 +268,10 @@ class SocketService {
     this.on('ice_candidate', callback);
   }
 
-  onCallStatusUpdate(callback) {
-    this.on('call_status_update', callback);
+  onCallFailed(callback) {
+    this.on('call_failed', callback);
   }
+
 
   // Get connection status
   getConnectionStatus() {

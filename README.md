@@ -310,3 +310,13 @@ If you encounter any issues or have questions, please create an issue in the rep
 ---
 
 **Note**: This is a demonstration application. For production use, implement additional security measures and proper database storage.
+
+
+
+
+<!-- there are mutiple issue 
+1 issue the video is capuring but not steaming 
+2 issue if I will click on answer then still ringtone 
+3 issue sometime ringtone.mp ring otherwise it taking beep sound I don't want beep soucd 
+4) issue if am cutting the call the system camera should also disconnect and off 
+5) if I am cutting the call then both side disconnect the call  -->

@@ -20,8 +20,8 @@ export const store = configureStore({
         ignoredActions: ['socket/connect', 'socket/disconnect'],
         // Ignore these field paths in all actions
         ignoredActionsPaths: ['meta.arg', 'payload.timestamp'],
-        // Ignore these paths in the state (MediaStream objects are not serializable)
-        ignoredPaths: ['socket.instance', 'call.localStream', 'call.remoteStream'],
+        // Ignore these paths in the state
+        ignoredPaths: ['socket.instance'],
       },
     }),
   devTools: process.env.NODE_ENV !== 'production',

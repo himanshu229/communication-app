@@ -54,9 +54,8 @@ const IncomingCall = () => {
 
   return (
     <>
-      {/* Overlay */}
-      <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
-        {/* Modal */}
+      {/* Desktop Modal */}
+      <div className="hidden md:block fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
         <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 overflow-hidden animate-pulse">
           {/* Header */}
           <div className="bg-gradient-to-br from-blue-600 to-purple-600 p-6 text-center text-white">
@@ -110,7 +109,7 @@ const IncomingCall = () => {
         </div>
       </div>
 
-      {/* Mobile-specific fullscreen modal */}
+      {/* Mobile Fullscreen Modal */}
       <div className="md:hidden fixed inset-0 bg-gradient-to-br from-blue-900 to-purple-900 z-40 flex flex-col items-center justify-center p-6 text-white">
         {/* Caller Avatar */}
         <div className="mb-8">

@@ -10,7 +10,6 @@ export const useUsers = () => useAppSelector((state) => state.users);
 export const useChat = () => useAppSelector((state) => state.chat);
 export const useMessages = () => useAppSelector((state) => state.messages);
 export const useCall = () => useAppSelector((state) => state.call);
-
 // Combined selector hooks for common use cases
 export const useAuthUser = () => useAppSelector((state) => state.auth.user);
 export const useIsAuthenticated = () => useAppSelector((state) => state.auth.isAuthenticated);
@@ -40,3 +39,7 @@ export const useMediaState = () => useAppSelector((state) => ({
   isAudioEnabled: state.call.isAudioEnabled,
   isSpeakerEnabled: state.call.isSpeakerEnabled
 }));
+export const useCallHistory = () => useAppSelector((state) => state.call.callHistory);
+export const useCallError = () => useAppSelector((state) => state.call.error);
+export const useConnectionState = () => useAppSelector((state) => state.call.connectionState);
+export const useCallDuration = () => useAppSelector((state) => state.call.callDuration);

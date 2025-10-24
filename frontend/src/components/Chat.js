@@ -1,12 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Users, Lock, LogOut, Circle, ArrowLeft, Video, Phone } from 'lucide-react';
+import { Users, Lock, LogOut, Circle, ArrowLeft, Video, Phone, Clock } from 'lucide-react';
 import { useAppDispatch, useAuth, useUsers, useChat, useMessages } from '../hooks/redux';
 import { useSocket } from '../hooks/useSocket';
 import { fetchAllUsers } from '../store/slices/usersSlice';
 import { getOrCreateRoom, setSelectedUser, clearCurrentRoom } from '../store/slices/chatSlice';
 import { fetchRoomMessages, sendMessage as sendMessageAction, clearCurrentRoomMessages } from '../store/slices/messagesSlice';
 import { initiateCall, setLocalUserId } from '../store/slices/callSlice';
+import { useCallManager } from '../hooks/useCallManager';
 import MessagesContainer from './MessagesContainer';
+import CallHistory from './CallHistory';
 
 const Chat = ({ onLogout }) => {
   const dispatch = useAppDispatch();
@@ -18,6 +20,7 @@ const Chat = ({ onLogout }) => {
   const [currentMessage, setCurrentMessage] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+  const [showCallHistory, setShowCallHistory] = useState(false);
   const messagesEndRef = useRef(null);
   const typingTimeoutRef = useRef(null);
   const currentRoomRef = useRef(null);
@@ -26,15 +29,16 @@ const Chat = ({ onLogout }) => {
   const { 
     connect, 
     disconnect, 
-    sendMessage, 
     emit,
     createRoom, 
     startTyping, 
     stopTyping,
     joinRoom,
-    leaveRoom,
-    initiateCall: socketInitiateCall
+    leaveRoom
   } = useSocket();
+
+  // Call manager
+  const { initiateCall } = useCallManager();
 
   // Initialize socket connection and fetch users
   useEffect(() => {
@@ -179,35 +183,22 @@ const Chat = ({ onLogout }) => {
     dispatch(clearCurrentRoomMessages());
   };
 
-  const handleInitiateCall = (callType) => {
+  const handleInitiateCall = async (callType) => {
     if (!selectedUser || !currentRoom || !user?.id) {
-      console.error('Cannot initiate call: missing required data', {
-        selectedUser: !!selectedUser,
-        currentRoom: !!currentRoom,
-        userId: !!user?.id
-      });
+      console.error('Cannot initiate call: missing required data');
       return;
     }
 
-    // Dispatch Redux action to initiate call
-    dispatch(initiateCall({
-      userId: selectedUser.id,
-      userName: selectedUser.name,
-      callType,
-      roomId: currentRoom.id
-    }));
-
-    // Send call initiation via socket
-    if (socketInitiateCall) {
-      socketInitiateCall({
-        to: selectedUser.id,
-        from: user.id,
-        fromName: user.name,
+    try {
+      // Use call manager to initiate call
+      await initiateCall(
+        selectedUser.id,
+        selectedUser.name,
         callType,
-        roomId: currentRoom.id
-      });
-    } else {
-      console.error('Socket initiate call method not available');
+        currentRoom.id
+      );
+    } catch (error) {
+      console.error('Error initiating call:', error);
     }
   };
 
@@ -218,6 +209,7 @@ const Chat = ({ onLogout }) => {
   const handleVoiceCall = () => {
     handleInitiateCall('voice');
   };
+
 
   const formatTime = (timestamp) => {
     return new Date(timestamp).toLocaleTimeString([], { 
@@ -303,6 +295,15 @@ const Chat = ({ onLogout }) => {
               </button>
             </div>
           )}
+
+          {/* Call History Button */}
+          <button
+            onClick={() => setShowCallHistory(true)}
+            className="p-2 bg-white bg-opacity-20 border-none rounded-full text-white cursor-pointer transition-all duration-300 hover:bg-opacity-30 hover:scale-110 flex items-center justify-center"
+            title="Call history"
+          >
+            <Clock size={18} className="sm:w-5 sm:h-5" />
+          </button>
 
           {currentRoom && selectedUser && (
             <div className="hidden sm:flex items-center gap-1.5 px-3 py-2 bg-white bg-opacity-20 rounded-2xl text-sm">
@@ -393,6 +394,12 @@ const Chat = ({ onLogout }) => {
           sending={sending}
         />
       </div>
+
+      {/* Call History Modal */}
+      <CallHistory 
+        isOpen={showCallHistory} 
+        onClose={() => setShowCallHistory(false)} 
+      />
     </div>
   );
 };
